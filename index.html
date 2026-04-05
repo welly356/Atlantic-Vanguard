@@ -1,40 +1,54 @@
 <body>
-
     <div id="lobby">
         <h1 style="font-size: 3.5rem; text-shadow: 0 0 15px #fff;">NAVAL STORM: ONLINE</h1>
-        <p style="letter-spacing: 3px;">DEPLOY YOUR FLEET</p>
-        <div style="display:flex;">
+        <p style="letter-spacing: 3px; color: #aaa;">DEPLOY YOUR FLEET</p>
+        
+        <div style="display:flex; gap: 10px; margin-bottom: 30px;">
             <button class="btn" style="border-color: #44f; color: #44f;" onclick="joinGame('USA', 0x1a237e)">USA</button>
             <button class="btn" style="border-color: #888; color: #888;" onclick="joinGame('GER', 0x333333)">GERMANY</button>
             <button class="btn" style="border-color: #4f4; color: #4f4;" onclick="joinGame('UK', 0x1b5e20)">UK</button>
-    <h1 style="font-size: 3.5rem;">NAVAL STORM</h1>
-    
-    <div style="margin-bottom: 20px;">
-        <button class="btn" onclick="joinGame('USA', 0x1a237e)">USA</button>
-        <button class="btn" onclick="joinGame('GER', 0x333333)">GERMANY</button>
-    </div>
+            <button class="btn" style="border-color: #f44; color: #f44; font-weight: bold;" onclick="joinGame('USSR', 0x8b0000)">USSR (HEAVY)</button>
+        </div>
 
-    <div style="background: rgba(255,255,255,0.1); padding: 20px; border: 1px solid #444;">
-        <p>YOUR FLEET ID: <span id="my-id-display" style="color:#00ff00; font-weight:bold;">GENERATING...</span></p>
-        <input type="text" id="join-id-input" placeholder="ENTER FRIEND'S ID" style="padding:10px; width:200px; background:#000; color:#fff; border:1px solid #555;">
-        <button class="btn" style="padding:10px 20px; font-size:1rem;" onclick="connectToFriend()">CONNECT</button>
+        <div style="background: rgba(255,255,255,0.05); padding: 25px; border: 1px solid #444; border-radius: 8px;">
+            <p style="margin-top:0;">YOUR FLEET ID: <span id="my-id-display" style="color:#00ff00; font-weight:bold;">GENERATING...</span></p>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="join-id-input" placeholder="ENTER FRIEND'S ID" style="padding:12px; width:220px; background:#000; color:#fff; border:1px solid #555; outline: none;">
+                <button class="btn" style="padding:10px 25px; font-size:1rem; margin: 0;" onclick="connectToFriend()">CONNECT</button>
+            </div>
+        </div>
+
+        <p style="margin-top: 30px; color: #666; font-size: 0.8rem;">CONTROLS: WASD (MOVE) | CLICK/SPACE (FIRE) | ENTER (CHAT)</p>
     </div>
-</div>
 
 <script>
-    // Logic to handle PeerJS connection
+    // --- USSR BUFF LOGIC ---
+    function joinGame(nation, color) {
+        myNation = nation;
+        let shipStats = { speed: 0.01, bulletSpeed: 15, scale: 1 };
+
+        // The "Strongest" Modifier
+        if (nation === 'USSR') {
+            shipStats.speed = 0.015;       // Faster acceleration
+            shipStats.bulletSpeed = 25;    // High-velocity shells
+            shipStats.scale = 1.3;         // Larger, more imposing ship
+            console.log("USSR Heavy Fleet deployed. Maximum firepower engaged.");
+        }
+
+        // Proceed to build the ship using shipStats...
+        setupShip(color, shipStats);
+        document.getElementById('lobby').style.display = 'none';
+    }
+
     function connectToFriend() {
         const targetId = document.getElementById('join-id-input').value;
-        if (targetId) {
+        if (targetId && myPeer) {
             conn = myPeer.connect(targetId);
             conn.on('open', () => {
                 console.log("Connected to " + targetId);
-                // Send your initial data
                 conn.send({ type: 'join', nation: myNation });
             });
         }
     }
 </script>
-        </div>
-        <p style="margin-top: 30px; color: #aaa;">CONTROLS: WASD (MOVE) | SPACE (FIRE) | MOUSE (LOOK)</p>
-    </div>
+</body>
