@@ -20,6 +20,7 @@
         .btn:hover { background: #fff; color: #000; }
         #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.6); padding: 15px; border-left: 4px solid #f44; }
         #crosshair { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; border: 2px solid rgba(0,255,0,0.7); border-radius: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; }
+        #reload-ui { font-size: 0.7rem; color: #0f0; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -36,17 +37,14 @@
 </div>
 
 <div id="multiplayer-status">
-    <div style="font-size: 0.7rem; color: #888; margin-bottom: 4px;">FLEET SERVER ID (CLICK TO COPY)</div>
+    <div style="font-size: 0.7rem; color: #888; margin-bottom: 4px;">FLEET SERVER ID</div>
     <div id="my-id-display" onclick="copyID()">GENERATING...</div>
-    <div style="margin-top: 10px;">
-        <input type="text" id="join-id-input" placeholder="PASTE FRIEND ID" style="padding:8px; width:140px; background:#000; color:#fff; border:1px solid #444;">
-        <button class="btn" style="padding:6px 12px; font-size:0.7rem; margin:0;" onclick="connectToFriend()">JOIN</button>
-    </div>
 </div>
 
 <div id="ui">
     <b>TASK FORCE: <span id="nation-tag">OFFLINE</span></b><br>
     SPEED: <span id="spd">0</span> KTS
+    <div id="reload-ui">CANNONS READY</div>
 </div>
 
 <div id="crosshair"></div>
@@ -66,60 +64,68 @@
     import { Water } from 'three/addons/objects/Water.js';
 
     let scene, camera, renderer, water, ship, myPeer, myNation;
-    let velocity = 0, isLocked = false, pitch = 0;
-    const keys = {};
+    let velocity = 0, isLocked = false, pitch = 0, canFire = true;
+    let bulletVelocity = 4;
+    const keys = {}, bullets = [];
 
-    // Use window assignment so the HTML buttons can see these functions
     window.joinGame = (nation, color) => {
-        if (!ship) return; // Safety check
+        if (!ship) return;
         myNation = nation;
         document.getElementById('lobby').style.display = 'none';
         document.getElementById('nation-tag').innerText = nation;
         document.getElementById('nation-tag').style.color = '#' + color.toString(16);
         
-        // Massive Hull for USSR
         if(nation === 'USSR') {
-            ship.children[0].geometry.dispose(); // Clean up old geo
             ship.children[0].geometry = new THREE.BoxGeometry(5, 2.5, 15);
+            bulletVelocity = 6; // USSR high-velocity shells
         }
 
         ship.children[0].material.color.setHex(color);
         ship.children[1].material.color.setHex(color);
 
         myPeer = new Peer();
-        myPeer.on('open', (id) => {
-            document.getElementById('my-id-display').innerText = id;
-        });
+        myPeer.on('open', (id) => { document.getElementById('my-id-display').innerText = id; });
     };
 
     window.copyID = () => {
-        const idText = document.getElementById('my-id-display').innerText;
-        navigator.clipboard.writeText(idText);
+        navigator.clipboard.writeText(document.getElementById('my-id-display').innerText);
         alert("ID Copied!");
     };
 
-    window.connectToFriend = () => {
-        const targetId = document.getElementById('join-id-input').value;
-        if (targetId && myPeer) {
-            myPeer.connect(targetId);
-            document.getElementById('multiplayer-status').style.borderRightColor = '#44f';
-        }
-    };
+    function fireCannon() {
+        if (!canFire || !myNation) return;
+        canFire = false;
+        document.getElementById('reload-ui').innerText = "RELOADING...";
+        document.getElementById('reload-ui').style.color = "#f44";
+
+        const bGeo = new THREE.SphereGeometry(0.4);
+        const bMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+        const bullet = new THREE.Mesh(bGeo, bMat);
+
+        // Position bullet at the front of the ship
+        bullet.position.copy(ship.position);
+        bullet.position.y += 2.5; 
+        
+        // Direction based on ship orientation
+        const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
+        
+        bullets.push({ mesh: bullet, vel: dir.multiplyScalar(bulletVelocity) });
+        scene.add(bullet);
+
+        // Reload speed balance
+        setTimeout(() => {
+            canFire = true;
+            document.getElementById('reload-ui').innerText = "CANNONS READY";
+            document.getElementById('reload-ui').style.color = "#0f0";
+        }, myNation === 'USSR' ? 1000 : 600);
+    }
 
     function init() {
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
-        
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
         document.body.appendChild(renderer.domElement);
-
-        // Environment
-        const light = new THREE.DirectionalLight(0xffffff, 2);
-        light.position.set(50, 100, 50);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x444444));
 
         water = new Water(new THREE.PlaneGeometry(10000, 10000), {
             textureWidth: 512, textureHeight: 512,
@@ -129,7 +135,6 @@
         water.rotation.x = -Math.PI / 2;
         scene.add(water);
 
-        // Build Ship
         ship = new THREE.Group();
         const hull = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 12), new THREE.MeshStandardMaterial({ color: 0x222222 }));
         hull.position.y = 1;
@@ -138,17 +143,28 @@
         ship.add(hull, bridge);
         scene.add(ship);
 
-        // Attach Camera to Ship
         ship.add(camera);
         camera.position.set(0, 12, -32);
         camera.lookAt(ship.position);
 
-        // Event Listeners
-        document.addEventListener('mousedown', () => { if(myNation) document.body.requestPointerLock(); });
+        scene.add(new THREE.AmbientLight(0x444444));
+        const sun = new THREE.DirectionalLight(0xffffff, 2);
+        sun.position.set(50, 100, 50); scene.add(sun);
+
+        // INPUTS
+        document.addEventListener('mousedown', () => {
+            if (!isLocked && myNation) {
+                document.body.requestPointerLock();
+            } else if (isLocked) {
+                fireCannon(); // Firing on Left Click
+            }
+        });
+
         document.addEventListener('pointerlockchange', () => {
             isLocked = document.pointerLockElement === document.body;
             document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none';
         });
+
         document.addEventListener('mousemove', (e) => {
             if (isLocked) {
                 ship.rotation.y -= e.movementX * 0.002;
@@ -173,11 +189,21 @@
             ship.translateZ(velocity);
             document.getElementById('spd').innerText = Math.abs(velocity * 100).toFixed(1);
         }
+
+        // Bullet Logic
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            bullets[i].mesh.position.add(bullets[i].vel);
+            // Remove bullets after they fly too far
+            if (bullets[i].mesh.position.distanceTo(ship.position) > 1000) {
+                scene.remove(bullets[i].mesh);
+                bullets.splice(i, 1);
+            }
+        }
+
         water.material.uniforms['time'].value += 1.0 / 60.0;
         renderer.render(scene, camera);
     }
 
-    // Start everything
     init();
 </script>
 </body>
