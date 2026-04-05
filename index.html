@@ -1,30 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Naval Storm | WWII Complete Combat</title>
-    <style>
-        body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', Courier, monospace; overflow: hidden; user-select: none; }
-        #lobby {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle, #1a2a3a 0%, #000 100%); display: flex; flex-direction: column; 
-            align-items: center; justify-content: center; z-index: 1000; transition: 0.5s;
-        }
-        .btn {
-            padding: 20px 50px; margin: 15px; cursor: pointer; border: 2px solid #fff;
-            background: transparent; color: #fff; font-size: 1.4rem; font-weight: bold; text-transform: uppercase; transition: 0.3s;
-        }
-        .btn:hover { background: #fff; color: #000; box-shadow: 0 0 20px #fff; }
-        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; z-index: 10; background: rgba(0,0,0,0.5); padding: 10px; border: 1px solid #444; }
-        .hp-bar-bg { width: 200px; height: 15px; background: #440000; border: 1px solid #ffaaaa; margin-top: 5px; }
-        #hp-bar-fill { width: 100%; height: 100%; background: #ff0000; transition: width 0.2s; }
-        #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 14px; height: 14px;
-            border: 2px solid rgba(255,255,255,0.7); border-radius: 50%; transform: translate(-50%, -50%);
-        }
-        #status-msg { position: absolute; bottom: 20px; width: 100%; text-align: center; color: #ff0000; font-size: 2rem; font-weight: bold; text-shadow: 0 0 10px #f00; display: none; }
-    </style>
-</head>
 <body>
 
     <div id="lobby">
@@ -34,280 +7,34 @@
             <button class="btn" style="border-color: #44f; color: #44f;" onclick="joinGame('USA', 0x1a237e)">USA</button>
             <button class="btn" style="border-color: #888; color: #888;" onclick="joinGame('GER', 0x333333)">GERMANY</button>
             <button class="btn" style="border-color: #4f4; color: #4f4;" onclick="joinGame('UK', 0x1b5e20)">UK</button>
+    <h1 style="font-size: 3.5rem;">NAVAL STORM</h1>
+    
+    <div style="margin-bottom: 20px;">
+        <button class="btn" onclick="joinGame('USA', 0x1a237e)">USA</button>
+        <button class="btn" onclick="joinGame('GER', 0x333333)">GERMANY</button>
+    </div>
+
+    <div style="background: rgba(255,255,255,0.1); padding: 20px; border: 1px solid #444;">
+        <p>YOUR FLEET ID: <span id="my-id-display" style="color:#00ff00; font-weight:bold;">GENERATING...</span></p>
+        <input type="text" id="join-id-input" placeholder="ENTER FRIEND'S ID" style="padding:10px; width:200px; background:#000; color:#fff; border:1px solid #555;">
+        <button class="btn" style="padding:10px 20px; font-size:1rem;" onclick="connectToFriend()">CONNECT</button>
+    </div>
+</div>
+
+<script>
+    // Logic to handle PeerJS connection
+    function connectToFriend() {
+        const targetId = document.getElementById('join-id-input').value;
+        if (targetId) {
+            conn = myPeer.connect(targetId);
+            conn.on('open', () => {
+                console.log("Connected to " + targetId);
+                // Send your initial data
+                conn.send({ type: 'join', nation: myNation });
+            });
+        }
+    }
+</script>
         </div>
         <p style="margin-top: 30px; color: #aaa;">CONTROLS: WASD (MOVE) | SPACE (FIRE) | MOUSE (LOOK)</p>
     </div>
-
-    <div id="ui">
-        <b>ID: <span id="my-id" style="color: #aaa;">CONNECTING...</span></b><br>
-        FLEET: <span id="nation-tag">OFFLINE</span><br>
-        SPEED: <span id="spd">0</span> KTS<br>
-        <div class="hp-bar-bg"><div id="hp-bar-fill"></div></div>
-    </div>
-    <div id="crosshair"></div>
-    <div id="status-msg">CRITICAL DAMAGE - SINKING</div>
-
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
-            }
-        }
-    </script>
-
-    <script type="module">
-        import * as THREE from 'three';
-        import { Water } from 'three/addons/objects/Water.js';
-
-        // --- GLOBAL VARIABLES ---
-        let scene, camera, renderer, water, ship, myPeer;
-        let velocity = 0, health = 100, isSunk = false;
-        const keys = {}, bullets = [], otherPlayers = {}, explosions = [];
-        let canFire = true, fireRate = 500; // ms
-
-        // --- EXPOSE LOBBY JOIN FUNCTION ---
-        window.joinGame = (nation, color) => {
-            document.getElementById('lobby').style.opacity = '0';
-            setTimeout(() => document.getElementById('lobby').style.display = 'none', 500);
-            
-            document.getElementById('nation-tag').innerText = nation;
-            document.getElementById('nation-tag').style.color = '#' + color.toString(16);
-            
-            // Assign nation color to ship material
-            ship.children[0].material.color.setHex(color);
-            ship.children[1].material.color.setHex(color); // Bridge
-
-            // START NETWORK (GitHub friendly P2P)
-            myPeer = new Peer(); 
-            myPeer.on('open', (id) => {
-                document.getElementById('my-id').innerText = id.substring(0,5);
-                console.log('My Fleet ID: ' + id);
-                
-                // For testing: simulate an enemy 50 meters away after 3s
-                setTimeout(() => spawnDummyEnemy(), 3000);
-            });
-        };
-
-        init();
-        animate();
-
-        // --- INITIALIZATION ---
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
-            
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 0.6;
-            document.body.appendChild(renderer.domElement);
-
-            // 1. Ultra Water
-            water = new Water(new THREE.PlaneGeometry(10000, 10000), {
-                textureWidth: 512, textureHeight: 512,
-                waterNormals: new THREE.TextureLoader().load('https://threejs.org/examples/textures/waternormals.jpg', (t) => t.wrapS = t.wrapT = THREE.RepeatWrapping),
-                sunDirection: new THREE.Vector3(1, 1, 1).normalize(), sunColor: 0xffffff, waterColor: 0x000a15, distortionScale: 4.0
-            });
-            water.rotation.x = -Math.PI / 2;
-            scene.add(water);
-
-            // 2. Local Player Ship Group
-            ship = new THREE.Group();
-            const ironMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.2, metalness: 1.0 });
-            
-            const hull = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 12), ironMat);
-            hull.position.y = 1; ship.add(hull);
-            
-            const bridge = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 3), ironMat);
-            bridge.position.set(0, 3, -1); ship.add(bridge);
-
-            scene.add(ship);
-            ship.add(camera); // Third person camera attached to ship
-            camera.position.set(0, 12, -30);
-            camera.lookAt(ship.position);
-
-            // 3. Lighting & Environment
-            const sunLight = new THREE.DirectionalLight(0xffffcc, 3);
-            sunLight.position.set(50, 100, 50); scene.add(sunLight);
-            scene.add(new THREE.AmbientLight(0x333333));
-            scene.fog = new THREE.Fog(0x000a15, 10, 1000); // Cinematic horizon fog
-
-            // 4. Input Listeners
-            window.onkeydown = (e) => {
-                keys[e.code] = true;
-                if(e.code === 'Space' && !isSunk) fireCannon();
-            };
-            window.onkeyup = (e) => keys[e.code] = false;
-            window.onresize = () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            };
-        }
-
-        // --- COMBAT & EFFECTS ---
-        function fireCannon() {
-            if(!canFire) return;
-            canFire = false;
-            setTimeout(() => canFire = true, fireRate);
-
-            // Create bullet mesh
-            const bullet = new THREE.Mesh(
-                new THREE.SphereGeometry(0.3),
-                new THREE.MeshBasicMaterial({ color: 0xffaa00 })
-            );
-            
-            // Spawn at front of ship, raised slightly
-            const firePos = new THREE.Vector3(0, 2.5, 6);
-            firePos.applyQuaternion(ship.quaternion);
-            bullet.position.copy(ship.position).add(firePos);
-            
-            // Calculate velocity vector (firing forward)
-            const direction = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
-            const bulletVelocity = direction.multiplyScalar(2.5); // Speed multiplier
-
-            bullets.push({ mesh: bullet, vel: bulletVelocity, owner: 'me', active: true });
-            scene.add(bullet);
-            
-            // Optional muzzle flash effect (procedural sphere light)
-            const flash = new THREE.PointLight(0xffcc00, 10, 20);
-            flash.position.copy(bullet.position);
-            scene.add(flash);
-            setTimeout(() => scene.remove(flash), 50);
-        }
-
-        function createExplosion(pos) {
-            // Particle system explosion (No external textures needed)
-            const particleCount = 50;
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(particleCount * 3);
-            const velocities = [];
-
-            for (let i = 0; i < particleCount; i++) {
-                positions[i * 3] = pos.x;
-                positions[i * 3 + 1] = pos.y;
-                positions[i * 3 + 2] = pos.z;
-                
-                velocities.push(new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.5,
-                    (Math.random()) * 0.8, // Mostly upwards
-                    (Math.random() - 0.5) * 0.5
-                ));
-            }
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            
-            const material = new THREE.PointsMaterial({ color: 0xff4400, size: 0.5, blending: THREE.AdditiveBlending, transparent: true });
-            const points = new THREE.Points(geometry, material);
-            scene.add(points);
-            
-            explosions.push({ mesh: points, vels: velocities, life: 1.0 });
-        }
-
-        // --- SIMULATED ENEMY FOR TESTING ---
-        function spawnDummyEnemy() {
-            const enemyShip = ship.clone();
-            // Assign different nation color (GER)
-            enemyShip.children[0].material = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.2, metalness: 1.0 });
-            enemyShip.children[1].material = enemyShip.children[0].material;
-            
-            enemyShip.position.set(0, 0, 80); // 80 meters in front
-            scene.add(enemyShip);
-            otherPlayers['test-dummy'] = { mesh: enemyShip, hp: 100, sunk: false };
-            console.log("TEST DUMMY SPANWED AT Z:80");
-        }
-
-        // --- MAIN GAME LOOP ---
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (!isSunk && ship.children.length > 0) {
-                // Movement & Physics
-                if (keys['KeyW']) velocity += 0.005;
-                if (keys['KeyS']) velocity -= 0.003;
-                velocity *= 0.985; // Drag
-                if (keys['KeyA']) ship.rotation.y += 0.02 * (Math.abs(velocity) * 10 + 0.1); // Turn sharper when moving
-                if (keys['KeyD']) ship.rotation.y -= 0.02 * (Math.abs(velocity) * 10 + 0.1);
-
-                ship.translateZ(velocity);
-                document.getElementById('spd').innerText = Math.abs(velocity * 100).toFixed(1);
-            
-                // Water Bobbing (Cinematic)
-                const time = performance.now() * 0.001;
-                ship.position.y = Math.sin(time) * 0.12;
-                ship.rotation.z = Math.sin(time * 0.5) * 0.03; // Roll
-                ship.rotation.x = Math.sin(time * 0.7) * 0.01; // Pitch
-            }
-
-            // Bullet Physics & Collision Detection
-            for(let i = bullets.length - 1; i >= 0; i--) {
-                const b = bullets[i];
-                if(!b.active) continue;
-                
-                b.mesh.position.add(b.vel);
-
-                // Simple Hit Detection against Test Dummy
-                for(let id in otherPlayers) {
-                    const target = otherPlayers[id];
-                    if(target.sunk) continue;
-                    
-                    // Box collision approximation (ship is roughly 3x12)
-                    const dist = b.mesh.position.distanceTo(target.mesh.position);
-                    if(dist < 7) { // Hit registered
-                        target.hp -= 20; // 5 shots to kill
-                        createExplosion(b.mesh.position);
-                        
-                        scene.remove(b.mesh);
-                        b.active = false;
-                        bullets.splice(i, 1);
-                        
-                        console.log("HIT! Enemy HP: " + target.hp);
-                        
-                        if(target.hp <= 0) {
-                            target.sunk = true;
-                            // Sinking animation logic (rotate and lower)
-                            target.mesh.rotation.x = -Math.PI / 8;
-                            target.mesh.position.y = -2;
-                            console.log("ENEMY SUNK!");
-                        }
-                        break; // Exit target loop, bullet is gone
-                    }
-                }
-
-                // Despawn logic (Distance or hit water)
-                if (b.active && (b.mesh.position.distanceTo(ship.position) > 800 || b.mesh.position.y < 0)) {
-                    if(b.mesh.position.y < 0) createExplosion(new THREE.Vector3(b.mesh.position.x, 0, b.mesh.position.z)); // Water splash
-                    scene.remove(b.mesh);
-                    bullets.splice(i, 1);
-                }
-            }
-
-            // Update Explosions Particles
-            for(let i = explosions.length - 1; i >= 0; i--) {
-                const e = explosions[i];
-                e.life -= 0.02; // Fade out
-                e.mesh.material.opacity = e.life;
-                
-                const positions = e.mesh.geometry.attributes.position.array;
-                for(let j=0; j < e.vels.length; j++) {
-                    positions[j*3] += e.vels[j].x;
-                    positions[j*3+1] += e.vels[j].y;
-                    positions[j*3+2] += e.vels[j].z;
-                    e.vels[j].y -= 0.01; // Gravity simulation
-                }
-                e.mesh.geometry.attributes.position.needsUpdate = true;
-                
-                if(e.life <= 0) {
-                    scene.remove(e.mesh);
-                    explosions.splice(i, 1);
-                }
-            }
-
-            water.material.uniforms['time'].value += 1.0 / 60.0;
-            renderer.render(scene, camera);
-        }
-    </script>
-</body>
-</html>
