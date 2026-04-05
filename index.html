@@ -5,21 +5,31 @@
     <title>Naval Storm: Global Front</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', Courier, monospace; overflow: hidden; user-select: none; }
+        
+        /* --- TOP RIGHT COMMAND UI --- */
+        #multiplayer-status {
+            position: absolute; top: 20px; right: 20px; z-index: 100;
+            background: rgba(0,0,0,0.8); padding: 15px; border-right: 4px solid #0f0;
+            text-align: right; min-width: 220px; border-radius: 4px;
+        }
+        #my-id-display { 
+            color: #0f0; font-weight: bold; cursor: pointer; 
+            background: #111; padding: 5px; margin-bottom: 8px; display: inline-block;
+        }
+        #my-id-display:hover { background: #222; }
+
         #lobby {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle, #1a2a3a 0%, #000 100%); display: flex; flex-direction: column; 
             align-items: center; justify-content: center; z-index: 1000; transition: 0.5s;
         }
         .btn {
-            padding: 15px 30px; margin: 10px; cursor: pointer; border: 2px solid #fff;
-            background: transparent; color: #fff; font-size: 1.1rem; font-weight: bold; text-transform: uppercase; transition: 0.3s;
+            padding: 12px 25px; margin: 5px; cursor: pointer; border: 2px solid #fff;
+            background: transparent; color: #fff; font-size: 1rem; font-weight: bold; text-transform: uppercase; transition: 0.3s;
         }
-        .btn:hover { background: #fff; color: #000; box-shadow: 0 0 15px #fff; }
-        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; z-index: 10; background: rgba(0,0,0,0.6); padding: 15px; border: 1px solid #444; }
-        #kill-feed { position: absolute; top: 20px; right: 20px; text-align: right; pointer-events: none; color: #ff4444; font-weight: bold; }
-        .hp-bar-bg { width: 200px; height: 12px; background: #440000; border: 1px solid #ffaaaa; margin-top: 8px; }
-        #hp-bar-fill { width: 100%; height: 100%; background: #ff0000; transition: width 0.2s; }
-        /* Crosshair hidden by default, shown when locked */
+        .btn:hover { background: #fff; color: #000; }
+
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.6); padding: 15px; border-left: 4px solid #f44; }
         #crosshair { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; border: 2px solid rgba(0,255,0,0.7); border-radius: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; }
     </style>
 </head>
@@ -33,25 +43,24 @@
         <button class="btn" style="border-color: #44f; color: #44f;" onclick="joinGame('USA', 0x1a237e)">USA</button>
         <button class="btn" style="border-color: #888; color: #888;" onclick="joinGame('GER', 0x333333)">GERMANY</button>
         <button class="btn" style="border-color: #4f4; color: #4f4;" onclick="joinGame('UK', 0x1b5e20)">UK</button>
-        <button class="btn" style="border-color: #ff0000; color: #ff0000; box-shadow: 0 0 10px #500;" onclick="joinGame('USSR', 0x5e1b1b)">USSR (HEAVY)</button>
+        <button class="btn" style="border-color: #ff0000; color: #ff0000;" onclick="joinGame('USSR', 0x5e1b1b)">USSR (HEAVY)</button>
     </div>
+</div>
 
-    <div style="background: rgba(255,255,255,0.05); padding: 25px; border: 1px solid #333; margin-top: 20px; text-align: center;">
-        <p style="margin-top:0;">MULTIPLAYER COMMAND</p>
-        <p style="font-size: 0.8rem;">YOUR ID: <span id="my-id-display" style="color:#0f0;">GENERATING...</span></p>
-        <input type="text" id="join-id-input" placeholder="PASTE FRIEND ID" style="padding:12px; width:180px; background:#111; color:#fff; border:1px solid #444; outline: none;">
-        <button class="btn" style="padding:10px 20px; font-size:0.9rem;" onclick="connectToFriend()">JOIN FLEET</button>
+<div id="multiplayer-status">
+    <div style="font-size: 0.7rem; color: #888; margin-bottom: 4px;">FLEET SERVER ID (CLICK TO COPY)</div>
+    <div id="my-id-display" onclick="copyID()">GENERATING...</div>
+    <div style="margin-top: 10px;">
+        <input type="text" id="join-id-input" placeholder="PASTE FRIEND ID" style="padding:8px; width:140px; background:#000; color:#fff; border:1px solid #444; font-size: 0.8rem;">
+        <button class="btn" style="padding:6px 12px; font-size:0.7rem; margin:0;" onclick="connectToFriend()">JOIN</button>
     </div>
 </div>
 
 <div id="ui">
     <b>TASK FORCE: <span id="nation-tag">OFFLINE</span></b><br>
-    SPEED: <span id="spd">0</span> KTS<br>
-    HP: <span id="hp-text">100</span>
-    <div class="hp-bar-bg"><div id="hp-bar-fill"></div></div>
+    SPEED: <span id="spd">0</span> KTS
 </div>
 
-<div id="kill-feed"></div>
 <div id="crosshair"></div>
 
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -69,76 +78,62 @@
     import { Water } from 'three/addons/objects/Water.js';
 
     let scene, camera, renderer, water, ship, myPeer, myNation;
-    let velocity = 0, health = 100, maxHealth = 100, isSunk = false;
-    let turnSpeed = 0.025, bulletVelocity = 3;
-    let isLocked = false, pitch = 0;
-    const keys = {}, bullets = [], otherPlayers = {}, explosions = [];
-    let canFire = true;
+    let velocity = 0, isSunk = false, isLocked = false, pitch = 0;
+    const keys = {};
 
     window.joinGame = (nation, color) => {
         myNation = nation;
-        document.getElementById('lobby').style.opacity = '0';
-        setTimeout(() => document.getElementById('lobby').style.display = 'none', 500);
+        document.getElementById('lobby').style.display = 'none';
         document.getElementById('nation-tag').innerText = nation;
         document.getElementById('nation-tag').style.color = '#' + color.toString(16);
         
+        // USSR Stats
         if(nation === 'USSR') {
             ship.children[0].geometry = new THREE.BoxGeometry(4.8, 2.5, 14);
-            ship.children[1].position.set(0, 3.5, 0);
-            health = 150; maxHealth = 150;
-            bulletVelocity = 5.5; turnSpeed = 0.015;
+            console.log("USSR Dreadnought Active.");
         }
 
-        updateUI();
         ship.children[0].material.color.setHex(color);
         ship.children[1].material.color.setHex(color);
 
+        // Initialize Peer
         myPeer = new Peer();
         myPeer.on('open', (id) => {
             document.getElementById('my-id-display').innerText = id;
-            setTimeout(() => spawnDummyEnemy(), 2000);
         });
     };
 
-    // --- MOUSE LOCK LOGIC ---
-    document.addEventListener('mousedown', () => {
-        if (!isLocked && myNation) {
-            document.body.requestPointerLock();
-        } else if (isLocked && !isSunk) {
-            fireCannon();
-        }
-    });
+    window.copyID = () => {
+        const idText = document.getElementById('my-id-display').innerText;
+        navigator.clipboard.writeText(idText);
+        alert("ID Copied to Clipboard!");
+    };
 
+    window.connectToFriend = () => {
+        const targetId = document.getElementById('join-id-input').value;
+        if (targetId && myPeer) {
+            const conn = myPeer.connect(targetId);
+            conn.on('open', () => {
+                document.getElementById('multiplayer-status').style.borderRightColor = '#44f';
+                console.log("Connected to fleet: " + targetId);
+            });
+        }
+    };
+
+    // Controls
+    document.addEventListener('mousedown', () => { if(myNation) document.body.requestPointerLock(); });
     document.addEventListener('pointerlockchange', () => {
         isLocked = document.pointerLockElement === document.body;
         document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none';
     });
-
     document.addEventListener('mousemove', (e) => {
-        if (isLocked && !isSunk) {
-            const sensitivity = 0.002;
-            // Ship Yaw
-            ship.rotation.y -= e.movementX * sensitivity;
-            // Camera Pitch (Vertical)
-            pitch -= e.movementY * sensitivity;
-            pitch = Math.max(-0.4, Math.min(0.2, pitch)); // Clamp look
+        if (isLocked) {
+            ship.rotation.y -= e.movementX * 0.002;
+            pitch = Math.max(-0.4, Math.min(0.2, pitch - e.movementY * 0.002));
             camera.position.y = 12 + (pitch * 15);
             camera.lookAt(ship.position);
         }
     });
-
-    function updateUI() {
-        document.getElementById('hp-text').innerText = Math.max(0, Math.floor(health));
-        document.getElementById('hp-bar-fill').style.width = (health / maxHealth * 100) + '%';
-    }
-
-    function addKill(msg) {
-        const feed = document.getElementById('kill-feed');
-        const entry = document.createElement('div');
-        entry.innerText = msg;
-        feed.appendChild(entry);
-        setTimeout(() => entry.remove(), 5000);
-    }
 
     init();
     animate();
@@ -148,7 +143,6 @@
         camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
         document.body.appendChild(renderer.domElement);
 
         water = new Water(new THREE.PlaneGeometry(10000, 10000), {
@@ -160,102 +154,33 @@
         scene.add(water);
 
         ship = new THREE.Group();
-        const mat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 1.0, roughness: 0.2 });
+        const mat = new THREE.MeshStandardMaterial({ color: 0x222222 });
         const hull = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 12), mat);
         hull.position.y = 1; ship.add(hull);
         const bridge = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 3), mat);
         bridge.position.set(0, 3, -1); ship.add(bridge);
-
         scene.add(ship);
         ship.add(camera);
         camera.position.set(0, 12, -32);
         camera.lookAt(ship.position);
 
-        const light = new THREE.DirectionalLight(0xffffff, 2.5);
-        light.position.set(50, 100, 50); scene.add(light);
         scene.add(new THREE.AmbientLight(0x444444));
+        const sun = new THREE.DirectionalLight(0xffffff, 2);
+        sun.position.set(50, 100, 50); scene.add(sun);
 
         window.onkeydown = (e) => keys[e.code] = true;
         window.onkeyup = (e) => keys[e.code] = false;
     }
 
-    function fireCannon() {
-        if(!canFire) return;
-        canFire = false; 
-        setTimeout(() => canFire = true, myNation === 'USSR' ? 800 : 600);
-
-        const bMesh = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({ color: 0xffaa00 }));
-        const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
-        bMesh.position.copy(ship.position).add(new THREE.Vector3(0, 2.5, 7).applyQuaternion(ship.quaternion));
-        
-        bullets.push({ mesh: bMesh, vel: dir.multiplyScalar(bulletVelocity) });
-        scene.add(bMesh);
-    }
-
-    function createExplosion(pos) {
-        const geo = new THREE.BufferGeometry();
-        const count = 40;
-        const positions = new Float32Array(count * 3);
-        const vels = [];
-        for(let i=0; i<count; i++) {
-            positions[i*3] = pos.x; positions[i*3+1] = pos.y; positions[i*3+2] = pos.z;
-            vels.push(new THREE.Vector3((Math.random()-0.5)*0.4, Math.random()*0.6, (Math.random()-0.5)*0.4));
-        }
-        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xff6600, size: 0.4, transparent: true }));
-        scene.add(pts);
-        explosions.push({ mesh: pts, vels, life: 1.0 });
-    }
-
-    function spawnDummyEnemy() {
-        const enemy = ship.clone();
-        enemy.children[0].material = new THREE.MeshStandardMaterial({ color: 0x333333 });
-        enemy.position.set(50, 0, 150);
-        scene.add(enemy);
-        otherPlayers['dummy'] = { mesh: enemy, hp: 100, sunk: false, nation: 'GER' };
-    }
-
     function animate() {
         requestAnimationFrame(animate);
-        if(!isSunk && myNation && isLocked) {
+        if(isLocked && myNation) {
             if(keys['KeyW']) velocity += 0.006;
             if(keys['KeyS']) velocity -= 0.004;
             velocity *= 0.985;
-            
-            // Movement is now tied to ship's direction (controlled by mouse)
             ship.translateZ(velocity);
             document.getElementById('spd').innerText = Math.abs(velocity * 100).toFixed(1);
         }
-
-        bullets.forEach((b, i) => {
-            b.mesh.position.add(b.vel);
-            for(let id in otherPlayers) {
-                let t = otherPlayers[id];
-                if(!t.sunk && b.mesh.position.distanceTo(t.mesh.position) < 8) {
-                    t.hp -= 25; createExplosion(b.mesh.position);
-                    scene.remove(b.mesh); bullets.splice(i,1);
-                    if(t.hp <= 0) { 
-                        t.sunk = true; t.mesh.rotation.x = -0.5; t.mesh.position.y = -3;
-                        addKill(`${myNation} SUNK ${t.nation}`);
-                    }
-                }
-            }
-            if(b.mesh.position.y < -1 || b.mesh.position.distanceTo(ship.position) > 1500) {
-                scene.remove(b.mesh); bullets.splice(i,1);
-            }
-        });
-
-        explosions.forEach((e, i) => {
-            e.life -= 0.03; e.mesh.material.opacity = e.life;
-            const pos = e.mesh.geometry.attributes.position.array;
-            for(let j=0; j<e.vels.length; j++) {
-                pos[j*3] += e.vels[j].x; pos[j*3+1] += e.vels[j].y; pos[j*3+2] += e.vels[j].z;
-                e.vels[j].y -= 0.01;
-            }
-            e.mesh.geometry.attributes.position.needsUpdate = true;
-            if(e.life <= 0) { scene.remove(e.mesh); explosions.splice(i,1); }
-        });
-
         water.material.uniforms['time'].value += 1.0 / 60.0;
         renderer.render(scene, camera);
     }
