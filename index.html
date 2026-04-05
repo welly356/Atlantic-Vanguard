@@ -2,38 +2,36 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Naval Storm | FPS MODE</title>
+    <title>Naval Storm | EXTREME WEATHER</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', monospace; overflow: hidden; user-select: none; }
         #lobby {
             position: absolute; width: 100%; height: 100%;
-            background: radial-gradient(circle, #1a2a3a 0%, #000 100%);
+            background: radial-gradient(circle, #0a1a2a 0%, #000 100%);
             display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000;
         }
         #ui { 
             position: absolute; top: 20px; left: 20px; z-index: 10; 
-            background: rgba(0,0,0,0.85); padding: 15px; border-left: 4px solid #f44; 
+            background: rgba(0,0,0,0.8); padding: 15px; border-left: 4px solid #f44; 
             min-width: 180px; pointer-events: none; display: none;
         }
         #controls-bar {
             position: absolute; bottom: 0; width: 100%; 
-            background: rgba(0,0,0,0.9); border-top: 1px solid #444;
-            padding: 12px; text-align: center; color: #ff4444; font-size: 0.9rem; font-weight: bold;
+            background: rgba(0,0,0,0.95); border-top: 1px solid #444;
+            padding: 12px; text-align: center; color: #0f0; font-size: 0.9rem; font-weight: bold;
         }
         .btn {
             padding: 15px 40px; margin: 10px; cursor: pointer; border: 2px solid #fff;
             background: transparent; color: #fff; font-size: 1.1rem; font-weight: bold; transition: 0.3s;
         }
-        .btn:hover { background: #f44; color: #fff; border-color: #f44; box-shadow: 0 0 20px #f44; }
+        .btn:hover { background: #fff; color: #000; box-shadow: 0 0 20px #fff; }
         
-        /* FPS Crosshair */
         #crosshair { 
             position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; 
             border: 1px solid rgba(0, 255, 0, 0.5); transform: translate(-50%, -50%); 
             pointer-events: none; display: none; z-index: 100;
         }
-        #crosshair::before { content: ''; position: absolute; top: 50%; left: 50%; width: 2px; height: 15px; background: #0f0; transform: translate(-50%, -50%); }
-        #crosshair::after { content: ''; position: absolute; top: 50%; left: 50%; width: 15px; height: 2px; background: #0f0; transform: translate(-50%, -50%); }
+        #crosshair::after { content: 'READY'; position: absolute; bottom: -20px; left: 5px; font-size: 8px; color: #0f0; }
 
         .stat-value { font-size: 1.6rem; font-weight: bold; }
     </style>
@@ -41,8 +39,8 @@
 <body>
 
 <div id="lobby">
-    <h1 style="font-size: 3.5rem; letter-spacing: 12px; color: #f44;">NAVAL STORM</h1>
-    <p style="color: #888;">FIRST PERSON SHOOTER MODE</p>
+    <h1 style="font-size: 3.5rem; letter-spacing: 12px; color: #fff;">NAVAL STORM</h1>
+    <p style="color: #555;">STORM & TORPEDO PROTOCOL v2.0</p>
     <div style="display: flex;">
         <button class="btn" onclick="startGame('USA', 0x1a237e)">USA</button>
         <button class="btn" onclick="startGame('USSR', 0x5e1b1b)">USSR</button>
@@ -51,14 +49,14 @@
 </div>
 
 <div id="ui">
-    <div style="font-size: 0.7rem; color: #f44;">COMMANDING FLEET</div>
-    <div id="n-tag" class="stat-value">OFFLINE</div>
-    <div style="font-size: 0.7rem; color: #888; margin-top:10px;">SPEED</div>
+    <div style="font-size: 0.7rem; color: #0f0;">COMMANDER STATUS: ACTIVE</div>
+    <div id="n-tag" class="stat-value">-</div>
+    <div style="font-size: 0.7rem; color: #888; margin-top:10px;">VELOCITY</div>
     <div><span id="spd" class="stat-value">0.0</span> KTS</div>
 </div>
 
 <div id="crosshair"></div>
-<div id="controls-bar">CLICK TO LOCK AIM | WASD: NAVIGATE | MOUSE: AIM | LEFT-CLICK: FIRE | ESC: EXIT</div>
+<div id="controls-bar">LEFT-CLICK: CANNONS | RIGHT-CLICK: TORPEDO | WASD: MOVE | ESC: UNLOCK</div>
 
 <script type="importmap">
     {
@@ -73,17 +71,20 @@
     import * as THREE from 'three';
     import { Water } from 'three/addons/objects/Water.js';
 
-    let scene, camera, renderer, water, ship, muzzleFlash;
+    let scene, camera, renderer, water, ship, lightning;
     let velocity = 0, isLocked = false, myNation = null;
-    const keys = {}, bullets = [], enemies = [];
+    let rain, rainGeo;
+    const keys = {}, bullets = [], enemies = [], torpedoes = [];
 
-    // --- INPUT HANDLERS ---
+    // --- INPUT ---
+    document.addEventListener('contextmenu', e => e.preventDefault());
     document.addEventListener('mousedown', (e) => {
         if (!myNation) return;
         if (!isLocked) {
             document.body.requestPointerLock();
-        } else if (e.button === 0) {
-            fire();
+        } else {
+            if (e.button === 0) fireCannon();
+            if (e.button === 2) fireTorpedo();
         }
     });
 
@@ -94,47 +95,53 @@
     });
 
     document.addEventListener('mousemove', (e) => {
-        if (isLocked && ship) {
-            // Mouse controls ship rotation directly for that "FPS" feel
-            ship.rotation.y -= e.movementX * 0.002;
-        }
+        if (isLocked && ship) ship.rotation.y -= e.movementX * 0.0015;
     });
 
-    // --- GAME START ---
+    // --- START GAME ---
     window.startGame = (nation, color) => {
         myNation = nation;
         document.getElementById('lobby').style.display = 'none';
         document.getElementById('n-tag').innerText = nation;
         document.getElementById('n-tag').style.color = '#' + color.toString(16);
 
-        // Remove old ship meshes
+        // Reset Ship Geometry
         const toRemove = [];
-        ship.children.forEach(child => { if(child.type === "Mesh" || child.type === "PointLight") toRemove.push(child); });
+        ship.children.forEach(child => { if(child.type === "Mesh") toRemove.push(child); });
         toRemove.forEach(child => ship.remove(child));
 
-        // FPS SHIP DESIGN
-        let hullGeo = (nation === 'USSR') ? new THREE.BoxGeometry(6, 3, 15) : new THREE.BoxGeometry(3, 2.5, 18);
-        const hull = new THREE.Mesh(hullGeo, new THREE.MeshStandardMaterial({ color: color, metalness: 0.8, roughness: 0.2 }));
+        let hullGeo = (nation === 'USSR') ? new THREE.BoxGeometry(6.5, 3.5, 14) : new THREE.BoxGeometry(3.5, 3, 18);
+        const hull = new THREE.Mesh(hullGeo, new THREE.MeshStandardMaterial({ color: color, metalness: 0.9, roughness: 0.1 }));
         hull.position.y = 1;
         ship.add(hull);
 
-        // The Bridge (Where you sit)
-        const bridge = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 4), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-        bridge.position.set(0, 4, -3);
+        const bridge = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 4), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+        bridge.position.set(0, 4.5, -4);
         ship.add(bridge);
 
-        // Muzzle Flash Light
-        muzzleFlash = new THREE.PointLight(0xffaa00, 0, 20);
-        muzzleFlash.position.set(0, 4, 10);
-        ship.add(muzzleFlash);
-
-        spawnEnemies();
+        spawnFleet();
+        createRain();
     };
 
-    function spawnEnemies() {
-        for(let i=0; i<12; i++) {
-            const e = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 15), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-            e.position.set((Math.random()-0.5)*1000, 0, 400 + (i*120));
+    function createRain() {
+        rainGeo = new THREE.BufferGeometry();
+        const rainCount = 10000;
+        const positions = new Float32Array(rainCount * 3);
+        for(let i=0; i<rainCount*3; i+=3) {
+            positions[i] = (Math.random()-0.5)*2000;
+            positions[i+1] = Math.random()*500;
+            positions[i+2] = (Math.random()-0.5)*2000;
+        }
+        rainGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const rainMat = new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.5, transparent: true });
+        rain = new THREE.Points(rainGeo, rainMat);
+        scene.add(rain);
+    }
+
+    function spawnFleet() {
+        for(let i=0; i<15; i++) {
+            const e = new THREE.Mesh(new THREE.BoxGeometry(7, 4, 16), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            e.position.set((Math.random()-0.5)*1200, 0, 500 + (i*150));
             scene.add(e);
             enemies.push({ mesh: e, hp: 100 });
         }
@@ -147,81 +154,88 @@
         scene = new THREE.Scene();
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
         document.body.appendChild(renderer.domElement);
 
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 30000);
-        
         ship = new THREE.Group();
         scene.add(ship);
-        
-        // --- FPS CAMERA POSITION ---
-        // We put the camera inside the bridge at the front
         ship.add(camera);
-        camera.position.set(0, 5, 0); // Eye-level on the deck
-        camera.lookAt(new THREE.Vector3(0, 5, 100)); // Look straight ahead
+        camera.position.set(0, 6, 0); 
 
-        water = new Water(new THREE.PlaneGeometry(30000, 30000), {
+        water = new Water(new THREE.PlaneGeometry(40000, 40000), {
             textureWidth: 512, textureHeight: 512,
             waterNormals: new THREE.TextureLoader().load('https://threejs.org/examples/textures/waternormals.jpg', t => t.wrapS = t.wrapT = THREE.RepeatWrapping),
-            sunDirection: new THREE.Vector3(1, 1, 1).normalize(), sunColor: 0xffffff, waterColor: 0x000a15, distortionScale: 4.5
+            sunDirection: new THREE.Vector3(1, 1, 1).normalize(), sunColor: 0x444444, waterColor: 0x00050a, distortionScale: 5.0
         });
         water.rotation.x = -Math.PI / 2;
         scene.add(water);
 
-        scene.add(new THREE.DirectionalLight(0xffffff, 2));
-        scene.add(new THREE.AmbientLight(0x222222));
-        scene.fog = new THREE.Fog(0x000a15, 100, 5000);
+        lightning = new THREE.DirectionalLight(0xffffff, 0);
+        scene.add(lightning);
+        scene.add(new THREE.AmbientLight(0x111122));
+        scene.fog = new THREE.Fog(0x00050a, 10, 3000);
 
         window.onkeydown = (e) => keys[e.code] = true;
         window.onkeyup = (e) => keys[e.code] = false;
     }
 
-    function fire() {
-        // Bullet spawn
-        const b = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
-        b.position.copy(ship.position).add(new THREE.Vector3(0, 4.5, 10).applyQuaternion(ship.quaternion));
-        
+    function fireCannon() {
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.4), new THREE.MeshBasicMaterial({ color: 0xffaa00 }));
+        b.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10).applyQuaternion(ship.quaternion));
         const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
-        bullets.push({ mesh: b, vel: dir.multiplyScalar(10) });
+        bullets.push({ mesh: b, vel: dir.multiplyScalar(12) });
         scene.add(b);
+    }
 
-        // Visual Feedback: Muzzle Flash
-        muzzleFlash.intensity = 20;
-        setTimeout(() => muzzleFlash.intensity = 0, 50);
-
-        // Simple FPS Recoil: Push ship back slightly
-        velocity -= 0.05;
+    function fireTorpedo() {
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 4), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+        t.rotation.x = Math.PI/2;
+        t.position.copy(ship.position).add(new THREE.Vector3(0, -1, 5).applyQuaternion(ship.quaternion));
+        const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
+        t.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(t.position, t.position.clone().add(dir), new THREE.Vector3(0,1,0)));
+        torpedoes.push({ mesh: t, vel: dir.multiplyScalar(4) });
+        scene.add(t);
     }
 
     function animate() {
         requestAnimationFrame(animate);
         if (isLocked && myNation) {
-            if (keys['KeyW']) velocity += 0.012;
-            if (keys['KeyS']) velocity -= 0.008;
+            if (keys['KeyW']) velocity += 0.015;
+            if (keys['KeyS']) velocity -= 0.01;
             velocity *= 0.98;
             ship.translateZ(velocity);
             
-            // Subtle "Ship Bobbing" for FPS immersion
-            const time = performance.now() * 0.002;
-            camera.position.y = 5 + Math.sin(time) * 0.05;
-            camera.rotation.z = Math.sin(time * 0.5) * 0.01;
+            // Camera Sway
+            camera.position.y = 6 + Math.sin(Date.now()*0.002)*0.1;
+            
+            // Rain Logic
+            if(rain) {
+                const pos = rainGeo.attributes.position.array;
+                for(let i=1; i<pos.length; i+=3) {
+                    pos[i] -= 4; // Fall speed
+                    if(pos[i] < 0) pos[i] = 500;
+                }
+                rainGeo.attributes.position.needsUpdate = true;
+            }
+
+            // Lightning Flash
+            if(Math.random() > 0.995) {
+                lightning.intensity = 5;
+                setTimeout(() => lightning.intensity = 0, 100);
+            }
 
             document.getElementById('spd').innerText = Math.abs(velocity * 100).toFixed(1);
         }
 
-        bullets.forEach((b, i) => {
-            b.mesh.position.add(b.vel);
+        // Projectile Logic
+        [...bullets, ...torpedoes].forEach((proj, i) => {
+            proj.mesh.position.add(proj.vel);
             enemies.forEach(en => {
-                if (en.hp > 0 && b.mesh.position.distanceTo(en.mesh.position) < 20) {
-                    en.hp -= 25;
-                    scene.remove(b.mesh); bullets.splice(i, 1);
-                    if(en.hp <= 0) { en.mesh.position.y = -20; }
+                if (en.hp > 0 && proj.mesh.position.distanceTo(en.mesh.position) < 20) {
+                    en.hp -= 50; scene.remove(proj.mesh);
+                    if(en.hp <= 0) en.mesh.position.y = -30;
                 }
             });
-            if (b.mesh.position.distanceTo(ship.position) > 3000) {
-                scene.remove(b.mesh); bullets.splice(i, 1);
-            }
         });
 
         water.material.uniforms['time'].value += 1.0 / 60.0;
