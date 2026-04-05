@@ -2,65 +2,59 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Naval Storm | Chat & Mod System</title>
+    <title>Naval Storm | Original Build + Chat</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', monospace; overflow: hidden; user-select: none; }
-        
         #lobby {
             position: absolute; width: 100%; height: 100%;
-            background: radial-gradient(circle, #05101a 0%, #000 100%);
+            background: radial-gradient(circle, #0a1a2a 0%, #000 100%);
             display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000;
         }
-        .btn { padding: 15px 40px; margin: 10px; cursor: pointer; border: 1px solid #555; background: #111; color: #eee; font-size: 1rem; }
-        
-        /* --- HUD & CHAT --- */
-        #game-hud { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; font-family: Arial, sans-serif; }
-        
-        #chat-container { position: absolute; top: 60px; left: 20px; width: 350px; pointer-events: auto; }
-        #chat-feed { height: 160px; overflow-y: hidden; display: flex; flex-direction: column; justify-content: flex-end; color: #fff; font-size: 0.85rem; text-shadow: 1px 1px #000; margin-bottom: 5px; }
-        #chat-input { 
-            width: 100%; background: rgba(0,0,0,0.7); border: 1px solid #444; color: #0f0; 
-            padding: 5px; outline: none; display: none; font-family: inherit;
+        #ui { 
+            position: absolute; top: 20px; left: 20px; z-index: 10; 
+            background: rgba(0,0,0,0.8); padding: 15px; border-left: 4px solid #f44; 
+            min-width: 150px; display: none;
         }
-        .chat-msg { margin: 2px 0; }
-        .sys-msg { color: #ffcc00; font-weight: bold; }
-        .mod-alert { color: #ff4444; font-style: italic; }
-
-        /* RESOURCE & TOP BAR (From Previous) */
-        #top-bar { position: absolute; top: 0; left: 0; width: 100%; height: 50px; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #222; }
-        .score-box { display: flex; align-items: center; gap: 10px; padding: 0 20px; font-weight: bold; }
-        #resource-stack { position: absolute; top: 250px; left: 20px; display: flex; flex-direction: column; gap: 10px; }
-        .res-row { display: flex; align-items: center; gap: 10px; font-weight: bold; font-size: 1.1rem; }
-        .icon { width: 25px; height: 25px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; }
-        
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; border: 1px solid #0f0; border-radius: 50%; transform: translate(-50%, -50%); display: none; }
+        /* --- SIMPLE CHAT STYLE --- */
+        #chat-box {
+            position: absolute; bottom: 20px; left: 20px; width: 300px;
+            display: none; z-index: 20;
+        }
+        #chat-log {
+            height: 120px; overflow-y: hidden; margin-bottom: 5px;
+            color: #aaa; font-size: 0.85rem; display: flex; flex-direction: column; justify-content: flex-end;
+        }
+        #chat-input {
+            width: 100%; background: rgba(0,0,0,0.6); border: 1px solid #444;
+            color: #0f0; padding: 5px; outline: none; font-family: inherit;
+        }
+        .btn {
+            padding: 15px 40px; margin: 10px; cursor: pointer; border: 2px solid #fff;
+            background: transparent; color: #fff; font-size: 1.1rem; font-weight: bold;
+        }
+        #crosshair { 
+            position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; 
+            border: 1px solid rgba(0, 255, 0, 0.5); transform: translate(-50%, -50%); 
+            pointer-events: none; display: none; z-index: 100;
+        }
     </style>
 </head>
 <body>
 
 <div id="lobby">
-    <h1>NAVAL STORM</h1>
-    <button class="btn" onclick="startGame('USA', 0x2233ff)">START BATTLE</button>
+    <h1 style="letter-spacing: 10px;">NAVAL STORM</h1>
+    <button class="btn" onclick="startGame('USA', 0x2233ff)">START</button>
 </div>
 
-<div id="game-hud">
-    <div id="top-bar">
-        <div class="score-box" style="color:#f44;">[AXIS] 25000</div>
-        <div style="color:#0f0; font-size: 1.2rem;">95:22</div>
-        <div class="score-box" style="color:#44f;">25000 [USA]</div>
-    </div>
+<div id="ui">
+    <div id="nation-display" style="font-weight:bold;">-</div>
+    <div style="font-size: 0.8rem; color: #888; margin-top:10px;">VELOCITY</div>
+    <div><span id="spd">0.0</span> KTS</div>
+</div>
 
-    <div id="chat-container">
-        <div id="chat-feed">
-            <div class="chat-msg sys-msg">[SYSTEM]: Press '/' to chat. Keep it clean, Commander.</div>
-        </div>
-        <input type="text" id="chat-input" placeholder="Type message..." maxlength="100">
-    </div>
-
-    <div id="resource-stack">
-        <div class="res-row"><div class="icon" style="background:#f44;">❤️</div>100</div>
-        <div class="res-row"><div class="icon" style="background:#ff0; color:#000;">||</div>300</div>
-    </div>
+<div id="chat-box">
+    <div id="chat-log"><div>[SYSTEM]: Press Enter to chat.</div></div>
+    <input type="text" id="chat-input" maxlength="50" placeholder="Type message...">
 </div>
 
 <div id="crosshair"></div>
@@ -78,84 +72,53 @@
     import * as THREE from 'three';
     import { Water } from 'three/addons/objects/Water.js';
 
-    let scene, camera, renderer, water, ship, isLocked = false, isChatting = false;
-    let velocity = 0; const keys = {};
+    let scene, camera, renderer, water, ship;
+    let velocity = 0, isLocked = false, isChatting = false;
+    const keys = {}, bullets = [];
 
-    // --- MODERATION LOGIC ---
-    const forbiddenPatterns = [
-        /\d{3}-\d{3}-\d{4}/, // Phone numbers
-        /\S+@\S+\.\S+/,      // Emails
-        /\b\d{1,5}\s\w+\s(?:st|ave|rd|blvd|lane|drive)\b/i // Basic Address pattern
-    ];
-
-    function filterMessage(msg) {
-        for (let pattern of forbiddenPatterns) {
-            if (pattern.test(msg)) return "[REDACTED: NO PERSONAL INFO]";
-        }
-        return msg;
-    }
-
-    function addChatMessage(text, type = "") {
-        const feed = document.getElementById('chat-feed');
-        const div = document.createElement('div');
-        div.className = `chat-msg ${type}`;
-        div.innerText = text;
-        feed.appendChild(div);
-        if (feed.childNodes.length > 8) feed.removeChild(feed.firstChild);
-    }
-
-    // --- INPUT CONTROLS ---
+    // --- CHAT LOGIC ---
     window.addEventListener('keydown', (e) => {
-        if (e.key === '/' && !isChatting) {
-            e.preventDefault();
-            openChat();
-        } else if (e.key === 'Enter' && isChatting) {
-            sendChat();
-        } else if (e.key === 'Escape' && isChatting) {
-            closeChat();
+        if (e.key === 'Enter') {
+            if (!isChatting) {
+                isChatting = true;
+                document.getElementById('chat-input').focus();
+                document.exitPointerLock();
+            } else {
+                sendChat();
+            }
         }
         if (!isChatting) keys[e.code] = true;
     });
 
-    window.addEventListener('keyup', (e) => { keys[e.code] = false; });
-
-    function openChat() {
-        isChatting = true;
-        const input = document.getElementById('chat-input');
-        input.style.display = 'block';
-        input.focus();
-        document.exitPointerLock();
-    }
-
-    function closeChat() {
-        isChatting = false;
-        const input = document.getElementById('chat-input');
-        input.value = "";
-        input.style.display = 'none';
-        document.body.requestPointerLock();
-    }
+    window.addEventListener('keyup', (e) => keys[e.code] = false);
 
     function sendChat() {
         const input = document.getElementById('chat-input');
-        let rawMsg = input.value.trim();
-        if (rawMsg) {
-            let safeMsg = filterMessage(rawMsg);
-            addChatMessage(`[YOU]: ${safeMsg}`, safeMsg.includes("REDACTED") ? "mod-alert" : "");
+        const log = document.getElementById('chat-log');
+        if (input.value.trim() !== "") {
+            const msg = document.createElement('div');
+            msg.innerText = "[YOU]: " + input.value;
+            log.appendChild(msg);
+            if (log.childNodes.length > 6) log.removeChild(log.firstChild);
         }
-        closeChat();
+        input.value = "";
+        isChatting = false;
+        document.body.requestPointerLock();
     }
 
-    // --- START GAME ---
+    // --- START ---
     window.startGame = (nation, color) => {
         document.getElementById('lobby').style.display = 'none';
-        document.getElementById('game-hud').style.display = 'block';
-        
+        document.getElementById('ui').style.display = 'block';
+        document.getElementById('chat-box').style.display = 'block';
+        document.getElementById('nation-display').innerText = nation;
+        document.getElementById('nation-display').style.color = '#' + color.toString(16);
+
         const hull = new THREE.Mesh(new THREE.BoxGeometry(4, 2.5, 18), new THREE.MeshStandardMaterial({ color: color }));
-        hull.position.y = 1.2;
+        hull.position.y = 1.25;
         ship.add(hull);
     };
 
-    // --- RENDERER & SCENE (Standard Setup) ---
     init();
     animate();
 
@@ -169,32 +132,37 @@
         ship = new THREE.Group();
         scene.add(ship);
         ship.add(camera);
-        camera.position.set(0, 5.5, 0);
+        camera.position.set(0, 5, 0);
 
         water = new Water(new THREE.PlaneGeometry(50000, 50000), {
             textureWidth: 512, textureHeight: 512,
             waterNormals: new THREE.TextureLoader().load('https://threejs.org/examples/textures/waternormals.jpg', t => t.wrapS = t.wrapT = THREE.RepeatWrapping),
-            sunDirection: new THREE.Vector3(1, 1, 1).normalize(), sunColor: 0xffffff, waterColor: 0x000a15, distortionScale: 4.0
+            sunDirection: new THREE.Vector3(1, 1, 1).normalize(), sunColor: 0xffffff, waterColor: 0x001e0f, distortionScale: 3.7
         });
         water.rotation.x = -Math.PI / 2;
         scene.add(water);
 
         scene.add(new THREE.AmbientLight(0x444444));
-        scene.add(new THREE.DirectionalLight(0xffffff, 2));
+        const sun = new THREE.DirectionalLight(0xffffff, 2);
+        sun.position.set(100, 100, 100);
+        scene.add(sun);
 
+        document.addEventListener('mousedown', () => { if (!isChatting) document.body.requestPointerLock(); });
         document.addEventListener('pointerlockchange', () => {
             isLocked = document.pointerLockElement === document.body;
             document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none';
         });
+        document.addEventListener('mousemove', (e) => { if (isLocked) ship.rotation.y -= e.movementX * 0.002; });
     }
 
     function animate() {
         requestAnimationFrame(animate);
         if (isLocked && !isChatting) {
             if (keys['KeyW']) velocity += 0.01;
-            if (keys['KeyS']) velocity -= 0.006;
-            velocity *= 0.985;
+            if (keys['KeyS']) velocity -= 0.005;
+            velocity *= 0.98;
             ship.translateZ(velocity);
+            document.getElementById('spd').innerText = Math.abs(velocity * 100).toFixed(1);
         }
         water.material.uniforms['time'].value += 1.0 / 60.0;
         renderer.render(scene, camera);
