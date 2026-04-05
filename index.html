@@ -28,12 +28,34 @@
 <body>
 
     <div id="lobby">
-        <h1 style="font-size: 3.5rem; text-shadow: 0 0 15px #fff;">NAVAL STORM: ONLINE</h1>
-        <p style="letter-spacing: 3px;">DEPLOY YOUR FLEET</p>
-        <div style="display:flex;">
-            <button class="btn" style="border-color: #44f; color: #44f;" onclick="joinGame('USA', 0x1a237e)">USA</button>
-            <button class="btn" style="border-color: #888; color: #888;" onclick="joinGame('GER', 0x333333)">GERMANY</button>
-            <button class="btn" style="border-color: #4f4; color: #4f4;" onclick="joinGame('UK', 0x1b5e20)">UK</button>
+    <h1 style="font-size: 3.5rem;">NAVAL STORM</h1>
+    
+    <div style="margin-bottom: 20px;">
+        <button class="btn" onclick="joinGame('USA', 0x1a237e)">USA</button>
+        <button class="btn" onclick="joinGame('GER', 0x333333)">GERMANY</button>
+    </div>
+
+    <div style="background: rgba(255,255,255,0.1); padding: 20px; border: 1px solid #444;">
+        <p>YOUR FLEET ID: <span id="my-id-display" style="color:#00ff00; font-weight:bold;">GENERATING...</span></p>
+        <input type="text" id="join-id-input" placeholder="ENTER FRIEND'S ID" style="padding:10px; width:200px; background:#000; color:#fff; border:1px solid #555;">
+        <button class="btn" style="padding:10px 20px; font-size:1rem;" onclick="connectToFriend()">CONNECT</button>
+    </div>
+</div>
+
+<script>
+    // Logic to handle PeerJS connection
+    function connectToFriend() {
+        const targetId = document.getElementById('join-id-input').value;
+        if (targetId) {
+            conn = myPeer.connect(targetId);
+            conn.on('open', () => {
+                console.log("Connected to " + targetId);
+                // Send your initial data
+                conn.send({ type: 'join', nation: myNation });
+            });
+        }
+    }
+</script>
         </div>
         <p style="margin-top: 30px; color: #aaa;">CONTROLS: WASD (MOVE) | SPACE (FIRE) | MOUSE (LOOK)</p>
     </div>
