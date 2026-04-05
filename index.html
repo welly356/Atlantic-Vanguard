@@ -19,20 +19,21 @@
         #kill-feed { position: absolute; top: 20px; right: 20px; text-align: right; pointer-events: none; color: #ff4444; font-weight: bold; }
         .hp-bar-bg { width: 200px; height: 12px; background: #440000; border: 1px solid #ffaaaa; margin-top: 8px; }
         #hp-bar-fill { width: 100%; height: 100%; background: #ff0000; transition: width 0.2s; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; transform: translate(-50%, -50%); }
+        /* Crosshair hidden by default, shown when locked */
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; border: 2px solid rgba(0,255,0,0.7); border-radius: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; }
     </style>
 </head>
 <body>
 
 <div id="lobby">
     <h1 style="font-size: 3rem; margin-bottom: 0;">NAVAL STORM</h1>
-    <p style="color: #888; letter-spacing: 5px; margin-bottom: 30px;">SOVIET UPDATE v1.2</p>
+    <p style="color: #f44; letter-spacing: 5px; margin-bottom: 30px;">SOVIET UPDATE v1.2</p>
     
     <div style="display:flex; flex-wrap: wrap; justify-content: center; max-width: 600px;">
         <button class="btn" style="border-color: #44f; color: #44f;" onclick="joinGame('USA', 0x1a237e)">USA</button>
         <button class="btn" style="border-color: #888; color: #888;" onclick="joinGame('GER', 0x333333)">GERMANY</button>
         <button class="btn" style="border-color: #4f4; color: #4f4;" onclick="joinGame('UK', 0x1b5e20)">UK</button>
-        <button class="btn" style="border-color: #f44; color: #f44;" onclick="joinGame('USSR', 0x5e1b1b)">USSR</button>
+        <button class="btn" style="border-color: #ff0000; color: #ff0000; box-shadow: 0 0 10px #500;" onclick="joinGame('USSR', 0x5e1b1b)">USSR (HEAVY)</button>
     </div>
 
     <div style="background: rgba(255,255,255,0.05); padding: 25px; border: 1px solid #333; margin-top: 20px; text-align: center;">
@@ -46,6 +47,7 @@
 <div id="ui">
     <b>TASK FORCE: <span id="nation-tag">OFFLINE</span></b><br>
     SPEED: <span id="spd">0</span> KTS<br>
+    HP: <span id="hp-text">100</span>
     <div class="hp-bar-bg"><div id="hp-bar-fill"></div></div>
 </div>
 
@@ -67,7 +69,9 @@
     import { Water } from 'three/addons/objects/Water.js';
 
     let scene, camera, renderer, water, ship, myPeer, myNation;
-    let velocity = 0, health = 100, isSunk = false;
+    let velocity = 0, health = 100, maxHealth = 100, isSunk = false;
+    let turnSpeed = 0.025, bulletVelocity = 3;
+    let isLocked = false, pitch = 0;
     const keys = {}, bullets = [], otherPlayers = {}, explosions = [];
     let canFire = true;
 
@@ -78,22 +82,55 @@
         document.getElementById('nation-tag').innerText = nation;
         document.getElementById('nation-tag').style.color = '#' + color.toString(16);
         
-        // Soviet Armor Logic: Wider and heavier
         if(nation === 'USSR') {
-            ship.children[0].geometry = new THREE.BoxGeometry(4.5, 2.2, 11); // Thicker hull
-            ship.children[1].position.set(0, 3.2, 0); // Centered heavy bridge
+            ship.children[0].geometry = new THREE.BoxGeometry(4.8, 2.5, 14);
+            ship.children[1].position.set(0, 3.5, 0);
+            health = 150; maxHealth = 150;
+            bulletVelocity = 5.5; turnSpeed = 0.015;
         }
 
+        updateUI();
         ship.children[0].material.color.setHex(color);
         ship.children[1].material.color.setHex(color);
 
         myPeer = new Peer();
         myPeer.on('open', (id) => {
             document.getElementById('my-id-display').innerText = id;
-            console.log('ID: ' + id);
             setTimeout(() => spawnDummyEnemy(), 2000);
         });
     };
+
+    // --- MOUSE LOCK LOGIC ---
+    document.addEventListener('mousedown', () => {
+        if (!isLocked && myNation) {
+            document.body.requestPointerLock();
+        } else if (isLocked && !isSunk) {
+            fireCannon();
+        }
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+        isLocked = document.pointerLockElement === document.body;
+        document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (isLocked && !isSunk) {
+            const sensitivity = 0.002;
+            // Ship Yaw
+            ship.rotation.y -= e.movementX * sensitivity;
+            // Camera Pitch (Vertical)
+            pitch -= e.movementY * sensitivity;
+            pitch = Math.max(-0.4, Math.min(0.2, pitch)); // Clamp look
+            camera.position.y = 12 + (pitch * 15);
+            camera.lookAt(ship.position);
+        }
+    });
+
+    function updateUI() {
+        document.getElementById('hp-text').innerText = Math.max(0, Math.floor(health));
+        document.getElementById('hp-bar-fill').style.width = (health / maxHealth * 100) + '%';
+    }
 
     function addKill(msg) {
         const feed = document.getElementById('kill-feed');
@@ -138,17 +175,20 @@
         light.position.set(50, 100, 50); scene.add(light);
         scene.add(new THREE.AmbientLight(0x444444));
 
-        window.onkeydown = (e) => { keys[e.code] = true; if(e.code === 'Space' && !isSunk) fireCannon(); };
+        window.onkeydown = (e) => keys[e.code] = true;
         window.onkeyup = (e) => keys[e.code] = false;
     }
 
     function fireCannon() {
         if(!canFire) return;
-        canFire = false; setTimeout(() => canFire = true, 600);
-        const bMesh = new THREE.Mesh(new THREE.SphereGeometry(0.4), new THREE.MeshBasicMaterial({ color: 0xffaa00 }));
+        canFire = false; 
+        setTimeout(() => canFire = true, myNation === 'USSR' ? 800 : 600);
+
+        const bMesh = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({ color: 0xffaa00 }));
         const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
-        bMesh.position.copy(ship.position).add(new THREE.Vector3(0, 2.5, 6).applyQuaternion(ship.quaternion));
-        bullets.push({ mesh: bMesh, vel: dir.multiplyScalar(3) });
+        bMesh.position.copy(ship.position).add(new THREE.Vector3(0, 2.5, 7).applyQuaternion(ship.quaternion));
+        
+        bullets.push({ mesh: bMesh, vel: dir.multiplyScalar(bulletVelocity) });
         scene.add(bMesh);
     }
 
@@ -170,19 +210,19 @@
     function spawnDummyEnemy() {
         const enemy = ship.clone();
         enemy.children[0].material = new THREE.MeshStandardMaterial({ color: 0x333333 });
-        enemy.position.set(20, 0, 100);
+        enemy.position.set(50, 0, 150);
         scene.add(enemy);
         otherPlayers['dummy'] = { mesh: enemy, hp: 100, sunk: false, nation: 'GER' };
     }
 
     function animate() {
         requestAnimationFrame(animate);
-        if(!isSunk && myNation) {
+        if(!isSunk && myNation && isLocked) {
             if(keys['KeyW']) velocity += 0.006;
             if(keys['KeyS']) velocity -= 0.004;
             velocity *= 0.985;
-            if(keys['KeyA']) ship.rotation.y += 0.025;
-            if(keys['KeyD']) ship.rotation.y -= 0.025;
+            
+            // Movement is now tied to ship's direction (controlled by mouse)
             ship.translateZ(velocity);
             document.getElementById('spd').innerText = Math.abs(velocity * 100).toFixed(1);
         }
@@ -200,7 +240,7 @@
                     }
                 }
             }
-            if(b.mesh.position.y < -1 || b.mesh.position.distanceTo(ship.position) > 1000) {
+            if(b.mesh.position.y < -1 || b.mesh.position.distanceTo(ship.position) > 1500) {
                 scene.remove(b.mesh); bullets.splice(i,1);
             }
         });
