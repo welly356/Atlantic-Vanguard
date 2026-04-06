@@ -1,168 +1,51 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Naval Storm: Global Front</title>
-    <style>
-        body { margin: 0; background: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; overflow: hidden; user-select: none; }
-        
-        /* --- MINIMALIST LOGIN --- */
-        #login-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; display: flex; flex-direction: column; 
-            align-items: center; justify-content: center; z-index: 2000;
-        }
-        .login-box {
-            width: 320px; padding: 40px; border: 1px solid #0f0;
-            background: rgba(0, 5, 0, 0.9); text-align: center;
-        }
-        h2 { letter-spacing: 5px; margin-top: 0; font-size: 1.1rem; color: #0f0; }
-        p { font-size: 0.6rem; color: #0a0; margin-bottom: 20px; }
-        
-        input {
-            width: 100%; padding: 12px; background: #000; border: 1px solid #0a0;
-            color: #0f0; font-family: inherit; outline: none; box-sizing: border-box;
-            text-align: center; text-transform: uppercase;
-        }
-        input:focus { border-color: #0f0; box-shadow: 0 0 15px rgba(0, 255, 0, 0.2); }
+let bulletVelocity = 4;
+    const keys = {}, bullets = [];
 
-        .btn-container { display: flex; gap: 10px; margin-top: 20px; }
-        .btn { 
-            flex: 1; padding: 12px; cursor: pointer; border: 1px solid #0f0; 
-            background: transparent; color: #0f0; font-weight: bold; font-size: 0.8rem;
-        }
-        .btn:hover { background: #0f0; color: #000; }
-        #error-msg { color: #f44; font-size: 0.7rem; margin-top: 15px; height: 15px; }
+    // --- MODERATION ---
+    const bannedWords = ["badword1", "badword2", "spam", "hack"]; 
+    // --- MINI-AI MODERATION ENGINE ---
+    const bannedWords = ["badword1", "hack", "spam"]; 
 
-        /* --- GAME HUD --- */
-        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.8); padding: 15px; border-left: 4px solid #0f0; display: none; }
-    </style>
-</head>
-<body>
+    function moderate(text) {
+        let moderated = text;
+        let output = text;
+        const lower = text.toLowerCase();
 
-<div id="login-overlay">
-    <div class="login-box">
-        <h2>IDENTIFY</h2>
-        <p>ENTER TEMPORARY CALLSIGN</p>
-        <input type="text" id="username-input" placeholder="---" maxlength="12" autocomplete="off">
-        
-        <div class="btn-container">
-            <button class="btn" onclick="launch('USA', 0x3333ff)">USA</button>
-            <button class="btn" onclick="launch('USSR', 0xff3333)">USSR</button>
-        </div>
-        <div id="error-msg"></div>
-    </div>
-</div>
+        // 1. PRIVACY LAYER (AI Pattern Detection for PII)
+        const piiPatterns = {
+            phone: /\d{3,}[-\s]?\d{3,}[-\s]?\d{4,}/g,
+            email: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,
+            ip: /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g
+        };
 
-<div id="ui">
-    <b id="display-name">---</b><br>
-    FLEET: <span id="nation-tag">OFFLINE</span><br>
-    <span style="font-size: 0.7rem; color: #0a0;">SESSION ACTIVE</span>
-</div>
-
-<script type="importmap">
-    { "imports": { "three": "https://unpkg.com/three@0.170.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/" } }
-</script>
-
-<script type="module">
-    import * as THREE from 'three';
-    import { Water } from 'three/addons/objects/Water.js';
-
-    let scene, camera, renderer, water, ship, playerGroup, myNation;
-    let velocity = 0, isLocked = false, isWalking = false;
-    const keys = {};
-
-    window.launch = (nation, color) => {
-        const user = document.getElementById('username-input').value.trim();
-        
-        if (user.length < 2) {
-            document.getElementById('error-msg').innerText = "IDENTIFICATION REQUIRED";
-            return;
+        for (let key in piiPatterns) {
+            output = output.replace(piiPatterns[key], "[PRIVACY SHIELD]");
         }
 
-        document.getElementById('login-overlay').style.display = 'none';
-        document.getElementById('ui').style.display = 'block';
-        document.getElementById('display-name').innerText = user.toUpperCase();
-        document.getElementById('nation-tag').innerText = nation;
-        
-        myNation = nation;
-        init(user, color);
-    };
+        // 2. BEHAVIOR LAYER (Detects aggressive intent/spam)
+        const aggressiveRegex = /(you|u)\s+(are|r|is)\s+(trash|bad|garbage|noob|stupid)/gi;
+        if (aggressiveRegex.test(lower)) {
+            output = output.replace(aggressiveRegex, "--- [BEHAVIOR FLAG] ---");
+        }
 
-    function init(name, nationColor) {
-        scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        water = new Water(new THREE.PlaneGeometry(10000, 10000), {
-            textureWidth: 512, textureHeight: 512,
-            waterNormals: new THREE.TextureLoader().load('https://threejs.org/examples/textures/waternormals.jpg', (t) => t.wrapS = t.wrapT = THREE.RepeatWrapping),
-            sunDirection: new THREE.Vector3(1, 1, 1).normalize(), sunColor: 0xffffff, waterColor: 0x000a15, distortionScale: 4.0
-        });
-        water.rotation.x = -Math.PI / 2;
-        scene.add(water);
-
-        ship = new THREE.Group();
-        const hull = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 22), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-        hull.position.y = 1;
-        ship.add(hull);
-        scene.add(ship);
-
-        playerGroup = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1, 4, 8), new THREE.MeshStandardMaterial({ color: nationColor }));
-        body.position.y = 1.2;
-        playerGroup.add(body);
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 256; canvas.height = 64;
-        ctx.font = 'bold 30px Courier New'; ctx.fillStyle = '#0f0'; ctx.textAlign = 'center';
-        ctx.fillText(name.toUpperCase(), 128, 45);
-        const texture = new THREE.CanvasTexture(canvas);
-        const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
-        label.position.y = 3; label.scale.set(4, 1, 1);
-        playerGroup.add(label);
-
-        playerGroup.position.set(0, 2, 0); 
-        ship.add(playerGroup);
-
-        scene.add(new THREE.AmbientLight(0x444444));
-        const sun = new THREE.DirectionalLight(0xffffff, 2);
-        sun.position.set(50, 100, 50); scene.add(sun);
-
-        document.addEventListener('pointerlockchange', () => { isLocked = document.pointerLockElement === document.body; });
-        document.addEventListener('mousedown', () => { if(!isLocked && myNation) document.body.requestPointerLock(); });
-        document.addEventListener('mousemove', (e) => { if (isLocked) ship.rotation.y -= e.movementX * 0.002; });
-        window.onkeydown = (e) => { keys[e.code] = true; if(e.code === 'ShiftLeft') isWalking = !isWalking; };
-        window.onkeyup = (e) => keys[e.code] = false;
-
-        animate();
-    }
-
-    function animate() {
-        requestAnimationFrame(animate);
-        if (isLocked) {
-            if (!isWalking) {
-                if (keys['KeyW']) velocity += 0.005;
-                if (keys['KeyS']) velocity -= 0.003;
-            } else {
-                if (keys['KeyW']) playerGroup.position.z += 0.15;
-                if (keys['KeyS']) playerGroup.position.z -= 0.15;
-                if (keys['KeyA']) playerGroup.position.x += 0.15;
-                if (keys['KeyD']) playerGroup.position.x -= 0.15;
-                playerGroup.position.x = Math.max(-3, Math.min(3, playerGroup.position.x));
-                playerGroup.position.z = Math.max(-10, Math.min(10, playerGroup.position.z));
+        // 3. GIBBERISH DETECTOR (Checks for vowel-less spam)
+        const words = output.split(" ");
+        words.forEach(word => {
+            if (word.length > 12 && !/[aeiouy]/.test(word.toLowerCase())) {
+                output = output.replace(word, "[SPAM DETECTED]");
             }
-        }
-        velocity *= 0.99; ship.translateZ(velocity);
-        const offset = new THREE.Vector3(0, 15, -28).applyQuaternion(ship.quaternion);
-        camera.position.copy(ship.position).add(offset);
-        camera.lookAt(ship.position);
-        water.material.uniforms['time'].value += 1.0 / 60.0;
-        renderer.render(scene, camera);
+        });
+
+        // 4. DICTIONARY LAYER (Case-insensitive hard matches)
+        bannedWords.forEach(word => {
+            const reg = new RegExp(word, "gi");
+            moderated = moderated.replace(reg, "****");
+            const reg = new RegExp(`\\b${word}\\w*\\b`, "gi");
+            output = output.replace(reg, "****");
+        });
+        return moderated;
+
+        return output;
     }
-</script>
-</body>
-</html>
+
+    function addChatMessage(sender, text, isSystem = false) {
