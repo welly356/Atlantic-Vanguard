@@ -5,12 +5,29 @@
     <title>Naval Storm: Global Front</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', Courier, monospace; overflow: hidden; user-select: none; }
+        
+        /* --- CHAT UI --- */
+        #chat-container {
+            position: absolute; bottom: 20px; left: 20px; width: 320px; height: 180px;
+            background: rgba(0,0,0,0.7); border: 1px solid #444; display: flex; flex-direction: column;
+            z-index: 100; pointer-events: auto;
+        }
+        #chat-box { flex: 1; overflow-y: auto; padding: 10px; font-size: 0.8rem; color: #aaa; }
+        #chat-input {
+            background: #111; border: none; border-top: 1px solid #444; color: #fff;
+            padding: 10px; outline: none; font-family: inherit;
+        }
+        .chat-msg { margin-bottom: 4px; line-height: 1.2; }
+        .chat-system { color: #ffff00; font-weight: bold; }
+
+        /* --- EXISTING UI --- */
         #multiplayer-status {
             position: absolute; top: 20px; right: 20px; z-index: 100;
             background: rgba(0,0,0,0.8); padding: 15px; border-right: 4px solid #0f0;
             text-align: right; min-width: 220px; border-radius: 4px;
         }
         #my-id-display { color: #0f0; font-weight: bold; cursor: pointer; background: #111; padding: 5px; margin-bottom: 8px; display: inline-block; }
+        
         #lobby {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle, #1a2a3a 0%, #000 100%); display: flex; flex-direction: column; 
@@ -18,6 +35,7 @@
         }
         .btn { padding: 12px 25px; margin: 5px; cursor: pointer; border: 2px solid #fff; background: transparent; color: #fff; font-weight: bold; text-transform: uppercase; transition: 0.3s; }
         .btn:hover { background: #fff; color: #000; }
+        
         #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.6); padding: 15px; border-left: 4px solid #f44; }
         #crosshair { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; border: 2px solid rgba(0,255,0,0.7); border-radius: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; }
         #reload-ui { font-size: 0.7rem; color: #0f0; margin-top: 5px; }
@@ -39,6 +57,15 @@
 <div id="multiplayer-status">
     <div style="font-size: 0.7rem; color: #888; margin-bottom: 4px;">FLEET SERVER ID</div>
     <div id="my-id-display" onclick="copyID()">GENERATING...</div>
+    <div style="margin-top: 10px;">
+        <input type="text" id="join-id-input" placeholder="PASTE ID" style="padding:8px; width:100px; background:#000; color:#fff; border:1px solid #444;">
+        <button class="btn" style="padding:6px 12px; font-size:0.7rem; margin:0;" onclick="connectToFriend()">JOIN</button>
+    </div>
+</div>
+
+<div id="chat-container">
+    <div id="chat-box"></div>
+    <input type="text" id="chat-input" placeholder="PRESS ENTER TO CHAT...">
 </div>
 
 <div id="ui">
@@ -63,10 +90,42 @@
     import * as THREE from 'three';
     import { Water } from 'three/addons/objects/Water.js';
 
-    let scene, camera, renderer, water, ship, myPeer, myNation;
+    let scene, camera, renderer, water, ship, myPeer, myNation, activeConn;
     let velocity = 0, isLocked = false, pitch = 0, canFire = true;
     let bulletVelocity = 4;
     const keys = {}, bullets = [];
+
+    // --- MODERATION ---
+    const bannedWords = ["badword1", "badword2", "spam", "hack"]; 
+
+    function moderate(text) {
+        let moderated = text;
+        bannedWords.forEach(word => {
+            const reg = new RegExp(word, "gi");
+            moderated = moderated.replace(reg, "****");
+        });
+        return moderated;
+    }
+
+    function addChatMessage(sender, text, isSystem = false) {
+        const box = document.getElementById('chat-box');
+        const div = document.createElement('div');
+        div.className = isSystem ? 'chat-msg chat-system' : 'chat-msg';
+        div.innerHTML = isSystem ? text : `<b>[${sender}]</b>: ${moderate(text)}`;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    // Chat Focus Handling
+    document.getElementById('chat-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.value.trim() !== "") {
+            const msg = e.target.value;
+            addChatMessage('YOU', msg);
+            if (activeConn) activeConn.send({ type: 'chat', text: msg, from: myNation });
+            e.target.value = "";
+            document.body.requestPointerLock();
+        }
+    });
 
     window.joinGame = (nation, color) => {
         if (!ship) return;
@@ -77,19 +136,42 @@
         
         if(nation === 'USSR') {
             ship.children[0].geometry = new THREE.BoxGeometry(5, 2.5, 15);
-            bulletVelocity = 6; // USSR high-velocity shells
+            bulletVelocity = 6;
         }
 
         ship.children[0].material.color.setHex(color);
         ship.children[1].material.color.setHex(color);
 
         myPeer = new Peer();
-        myPeer.on('open', (id) => { document.getElementById('my-id-display').innerText = id; });
+        myPeer.on('open', (id) => { 
+            document.getElementById('my-id-display').innerText = id;
+            addChatMessage("SYSTEM", `Fleet connection open. ID: ${id}`, true);
+        });
+
+        myPeer.on('connection', (conn) => {
+            activeConn = conn;
+            setupConnListeners(conn);
+        });
     };
+
+    window.connectToFriend = () => {
+        const id = document.getElementById('join-id-input').value;
+        if (id && myPeer) {
+            activeConn = myPeer.connect(id);
+            setupConnListeners(activeConn);
+        }
+    };
+
+    function setupConnListeners(conn) {
+        conn.on('open', () => addChatMessage("SYSTEM", "Ally fleet connected.", true));
+        conn.on('data', (data) => {
+            if (data.type === 'chat') addChatMessage(data.from, data.text);
+        });
+    }
 
     window.copyID = () => {
         navigator.clipboard.writeText(document.getElementById('my-id-display').innerText);
-        alert("ID Copied!");
+        addChatMessage("SYSTEM", "ID copied to clipboard.", true);
     };
 
     function fireCannon() {
@@ -102,17 +184,12 @@
         const bMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
         const bullet = new THREE.Mesh(bGeo, bMat);
 
-        // Position bullet at the front of the ship
-        bullet.position.copy(ship.position);
-        bullet.position.y += 2.5; 
-        
-        // Direction based on ship orientation
+        bullet.position.copy(ship.position).y += 2.5; 
         const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
         
         bullets.push({ mesh: bullet, vel: dir.multiplyScalar(bulletVelocity) });
         scene.add(bullet);
 
-        // Reload speed balance
         setTimeout(() => {
             canFire = true;
             document.getElementById('reload-ui').innerText = "CANNONS READY";
@@ -142,7 +219,6 @@
         bridge.position.set(0, 3, -1);
         ship.add(hull, bridge);
         scene.add(ship);
-
         ship.add(camera);
         camera.position.set(0, 12, -32);
         camera.lookAt(ship.position);
@@ -151,13 +227,10 @@
         const sun = new THREE.DirectionalLight(0xffffff, 2);
         sun.position.set(50, 100, 50); scene.add(sun);
 
-        // INPUTS
-        document.addEventListener('mousedown', () => {
-            if (!isLocked && myNation) {
-                document.body.requestPointerLock();
-            } else if (isLocked) {
-                fireCannon(); // Firing on Left Click
-            }
+        document.addEventListener('mousedown', (e) => {
+            if (e.target.id === "chat-input" || e.target.id === "chat-box") return;
+            if (!isLocked && myNation) document.body.requestPointerLock();
+            else if (isLocked) fireCannon();
         });
 
         document.addEventListener('pointerlockchange', () => {
@@ -174,7 +247,10 @@
             }
         });
 
-        window.onkeydown = (e) => keys[e.code] = true;
+        window.onkeydown = (e) => {
+            if (document.activeElement.id === 'chat-input') return;
+            keys[e.code] = true;
+        };
         window.onkeyup = (e) => keys[e.code] = false;
 
         animate();
@@ -189,21 +265,16 @@
             ship.translateZ(velocity);
             document.getElementById('spd').innerText = Math.abs(velocity * 100).toFixed(1);
         }
-
-        // Bullet Logic
         for (let i = bullets.length - 1; i >= 0; i--) {
             bullets[i].mesh.position.add(bullets[i].vel);
-            // Remove bullets after they fly too far
             if (bullets[i].mesh.position.distanceTo(ship.position) > 1000) {
                 scene.remove(bullets[i].mesh);
                 bullets.splice(i, 1);
             }
         }
-
         water.material.uniforms['time'].value += 1.0 / 60.0;
         renderer.render(scene, camera);
     }
-
     init();
 </script>
 </body>
