@@ -96,14 +96,14 @@
     const keys = {}, bullets = [];
 
     // --- IRON WALL AI MODERATION ---
-    const BANNED_INTENTS = ["hack", "trash", "noob", "badword1", "ez"]; 
+    const BANNED_INTENTS = ["hack", "trash", "noob", "badword1", "ez", "spam"]; 
 
     function moderate(text) {
         // 1. NORMALIZATION: Strips the tricks (h.4.c.k -> hack)
         let clean = text.toLowerCase()
             .replace(/[0-9]/g, (m) => ({'0':'o', '1':'i', '3':'e', '4':'a', '5':'s', '7':'t', '8':'b'}[m] || m))
-            .replace(/[^a-z\s]/gi, '')
-            .replace(/(.)\1{2,}/g, '$1');
+            .replace(/[^a-z\s]/gi, '') // Remove symbols
+            .replace(/(.)\1{2,}/g, '$1'); // Remove repeated chars (soooo -> so)
 
         // 2. PRIVACY SCAN: Pattern matching for emails/phones
         const pii = /\d{3,}[-\s]?\d{3,}[-\s]?\d{4,}|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
@@ -123,32 +123,32 @@
         const div = document.createElement('div');
         div.className = isSystem ? 'chat-msg chat-system' : 'chat-msg';
         
-        // Final screen output
         div.innerHTML = isSystem ? text : `<b>[${sender}]</b>: ${text}`;
         box.appendChild(div);
         box.scrollTop = box.scrollHeight;
     }
 
-    // --- ABSOLUTE CENSORSHIP CHAT HANDLER ---
+    // --- CHAT INPUT HANDLER ---
     document.getElementById('chat-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && e.target.value.trim() !== "") {
             const rawMsg = e.target.value;
             let finalMsg = moderate(rawMsg);
 
-            // Universal Block: Overwrite message if flagged
+            // If flagged, replace the entire message with asterisks
             if (finalMsg === "FLAGGED_BY_AI") {
                 finalMsg = "****";
             }
 
-            // Sender sees the censored version
+            // Update local UI
             addChatMessage('YOU', finalMsg);
 
-            // Peer receives the censored version
+            // Send to peers if connected
             if (activeConn) {
                 activeConn.send({ type: 'chat', text: finalMsg, from: myNation });
             }
 
             e.target.value = "";
+            // Regain control of the ship after chatting
             document.body.requestPointerLock();
         }
     });
