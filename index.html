@@ -2,306 +2,329 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Naval Storm: Global Front</title>
+    <title>Naval Storm: Ultra Edition</title>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', Courier, monospace; overflow: hidden; user-select: none; }
+        body { margin: 0; background: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; overflow: hidden; user-select: none; text-shadow: 0 0 5px #0f0; }
         
-        /* --- CHAT UI --- */
-        #chat-container {
-            position: absolute; bottom: 20px; left: 20px; width: 320px; height: 180px;
-            background: rgba(0,0,0,0.7); border: 1px solid #444; display: flex; flex-direction: column;
-            z-index: 100; pointer-events: auto;
-        }
-        #chat-box { flex: 1; overflow-y: auto; padding: 10px; font-size: 0.8rem; color: #aaa; }
-        #chat-input {
-            background: #111; border: none; border-top: 1px solid #444; color: #fff;
-            padding: 10px; outline: none; font-family: inherit;
-        }
-        .chat-msg { margin-bottom: 4px; line-height: 1.2; }
-        .chat-system { color: #ffff00; font-weight: bold; }
+        /* --- ACADEMY LOGIN (MODERN TERMINAL) --- */
+        #login-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; border: 20px solid #111; box-sizing: border-box; }
+        .login-box { width: 400px; padding: 40px; border: 1px solid #0f0; background: rgba(0, 10, 0, 0.95); box-shadow: 0 0 30px rgba(0, 255, 0, 0.3); text-align: center; position: relative; }
+        .login-box::before { content: "SYS_STATUS: ONLINE // VOLATILE SESSION"; position: absolute; top: -10px; left: 20px; background: #000; padding: 0 10px; font-size: 0.6rem; color: #0a0; }
+        h1 { letter-spacing: 10px; margin: 0 0 30px 0; font-size: 2rem; animation: flicker 2s infinite; }
+        input { width: 100%; padding: 15px; margin-bottom: 20px; background: #050505; border: 1px solid #050; color: #0f0; font-family: inherit; text-align: center; outline: none; }
+        input:focus { border-color: #0f0; background: #000; box-shadow: 0 0 15px rgba(0, 255, 0, 0.2); }
+        .btn-container { display: flex; gap: 15px; }
+        .btn { flex: 1; padding: 15px; cursor: pointer; border: 1px solid #0f0; background: transparent; color: #0f0; font-weight: bold; text-transform: uppercase; }
+        .btn:hover { background: #0f0; color: #000; box-shadow: 0 0 20px #0f0; }
+        #load-status { font-size: 0.7rem; color: #0a0; margin-top: 25px; }
 
-        /* --- UI ELEMENTS --- */
-        #multiplayer-status {
-            position: absolute; top: 20px; right: 20px; z-index: 100;
-            background: rgba(0,0,0,0.8); padding: 15px; border-right: 4px solid #0f0;
-            text-align: right; min-width: 220px; border-radius: 4px;
-        }
-        #my-id-display { color: #0f0; font-weight: bold; cursor: pointer; background: #111; padding: 5px; margin-bottom: 8px; display: inline-block; }
-        
-        #lobby {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle, #1a2a3a 0%, #000 100%); display: flex; flex-direction: column; 
-            align-items: center; justify-content: center; z-index: 1000; transition: 0.5s;
-        }
-        .btn { padding: 12px 25px; margin: 5px; cursor: pointer; border: 2px solid #fff; background: transparent; color: #fff; font-weight: bold; text-transform: uppercase; transition: 0.3s; }
-        .btn:hover { background: #fff; color: #000; }
-        
-        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.6); padding: 15px; border-left: 4px solid #f44; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; border: 2px solid rgba(0,255,0,0.7); border-radius: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; }
-        #reload-ui { font-size: 0.7rem; color: #0f0; margin-top: 5px; }
+        /* --- GAME HUD (MINIMALIST CINEMATIC) --- */
+        #ui { position: absolute; top: 30px; left: 30px; z-index: 10; background: rgba(0,0,0,0.8); padding: 20px; border-left: 5px solid #0f0; display: none; pointer-events: none; }
+        #ui b { font-size: 1.2rem; letter-spacing: 2px; }
+        .hud-stat { font-size: 0.8rem; color: #0a0; margin: 2px 0; }
+        #health-bar { width: 180px; height: 10px; background: #111; border: 1px solid #0f0; margin-top: 10px; position: relative; }
+        #health-fill { width: 100%; height: 100%; background: #0f0; transition: width 0.3s ease; box-shadow: 0 0 10px #0f0; }
+        #mode-tag { position: absolute; top: 30px; right: 30px; font-size: 0.7rem; color: #ff0; border: 1px solid #ff0; padding: 5px 10px; display: none; }
+
+        /* --- POST-PROCESSING CRITICAL --- */
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; border: 1px solid rgba(0, 255, 0, 0.5); border-radius: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; }
+        #bloom-canvas { position: absolute; top: 0; left: 0; pointer-events: none; mix-blend-mode: screen; alpha: 0.5; }
+
+        @keyframes flicker { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } 52% { opacity: 1; } 54% { opacity: 0.9; } }
     </style>
 </head>
 <body>
 
-<div id="lobby">
-    <h1 style="font-size: 3rem; margin-bottom: 0;">NAVAL STORM</h1>
-    <p style="color: #f44; letter-spacing: 5px; margin-bottom: 30px;">SOVIET UPDATE v1.2</p>
-    <div style="display:flex; flex-wrap: wrap; justify-content: center; max-width: 600px;">
-        <button class="btn" style="border-color: #44f; color: #44f;" onclick="joinGame('USA', 0x1a237e)">USA</button>
-        <button class="btn" style="border-color: #888; color: #888;" onclick="joinGame('GER', 0x333333)">GERMANY</button>
-        <button class="btn" style="border-color: #4f4; color: #4f4;" onclick="joinGame('UK', 0x1b5e20)">UK</button>
-        <button class="btn" style="border-color: #ff0000; color: #ff0000;" onclick="joinGame('USSR', 0x5e1b1b)">USSR (HEAVY)</button>
+<div id="login-overlay">
+    <div class="login-box">
+        <h1>NAVAL STORM</h1>
+        <input type="text" id="username-input" placeholder="ENTER CALLSIGN" maxlength="12" autocomplete="off">
+        <div class="btn-container">
+            <button class="btn" onclick="launchSession('USA', 0x3366ff)">USA FLEET</button>
+            <button class="btn" onclick="launchSession('USSR', 0xff3333)">USSR FLEET</button>
+        </div>
+        <div id="load-status">SYSTEMS: IDLE // AWAITING AUTH</div>
     </div>
-</div>
-
-<div id="multiplayer-status">
-    <div style="font-size: 0.7rem; color: #888; margin-bottom: 4px;">FLEET SERVER ID</div>
-    <div id="my-id-display" onclick="copyID()">GENERATING...</div>
-    <div style="margin-top: 10px;">
-        <input type="text" id="join-id-input" placeholder="PASTE ID" style="padding:8px; width:100px; background:#000; color:#fff; border:1px solid #444;">
-        <button class="btn" style="padding:6px 12px; font-size:0.7rem; margin:0;" onclick="connectToFriend()">JOIN</button>
-    </div>
-</div>
-
-<div id="chat-container">
-    <div id="chat-box"></div>
-    <input type="text" id="chat-input" placeholder="PRESS ENTER TO CHAT...">
 </div>
 
 <div id="ui">
-    <b>TASK FORCE: <span id="nation-tag">OFFLINE</span></b><br>
-    SPEED: <span id="spd">0</span> KTS
-    <div id="reload-ui">CANNONS READY</div>
+    <b id="display-name">CALLSIGN</b><br>
+    <div class="hud-stat">FLEET: <span id="nation-tag">---</span></div>
+    <div class="hud-stat">SPD: <span id="spd">0</span> KTS</div>
+    <div id="health-bar"><div id="health-fill"></div></div>
 </div>
 
+<div id="mode-tag">MODE: STEERING (SHIFT TO WALK)</div>
 <div id="crosshair"></div>
 
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
-        }
-    }
+    { "imports": { "three": "https://unpkg.com/three@0.170.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/" } }
 </script>
 
 <script type="module">
     import * as THREE from 'three';
     import { Water } from 'three/addons/objects/Water.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-    let scene, camera, renderer, water, ship, myPeer, myNation, activeConn;
-    let velocity = 0, isLocked = false, pitch = 0, canFire = true;
-    let bulletVelocity = 4;
-    const keys = {}, bullets = [];
+    let scene, camera, renderer, composer, water, ship, playerGroup, myNation;
+    let velocity = 0, health = 100, isWalking = false, isLocked = false, isDestroyed = false;
+    const keys = {}, bullets = [], fragments = [];
 
-    // --- IRON WALL AI MODERATION ---
-    const BANNED_INTENTS = ["hack", "trash", "noob", "badword1", "ez", "spam"]; 
+    // --- GAME CONFIG (BALANCED & POLISHED) ---
+    const DECK_SIZE = { x: 4, z: 12 }; // Walkable area
+    const PLAYER_MAX_HP = 100;
+    const BULLET_VEL = 8;
+    const SHIP_TURN_RATE = 0.002;
 
-    function moderate(text) {
-        // 1. NORMALIZATION: Strips the tricks (h.4.c.k -> hack)
-        let clean = text.toLowerCase()
-            .replace(/[0-9]/g, (m) => ({'0':'o', '1':'i', '3':'e', '4':'a', '5':'s', '7':'t', '8':'b'}[m] || m))
-            .replace(/[^a-z\s]/gi, '') // Remove symbols
-            .replace(/(.)\1{2,}/g, '$1'); // Remove repeated chars (soooo -> so)
-
-        // 2. PRIVACY SCAN: Pattern matching for emails/phones
-        const pii = /\d{3,}[-\s]?\d{3,}[-\s]?\d{4,}|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
-        let output = text.replace(pii, "[REDACTED]");
-
-        // 3. INTENT CHECK
-        let isFlagged = false;
-        BANNED_INTENTS.forEach(intent => {
-            if (clean.includes(intent)) isFlagged = true;
-        });
-
-        return isFlagged ? "FLAGGED_BY_AI" : output;
-    }
-
-    function addChatMessage(sender, text, isSystem = false) {
-        const box = document.getElementById('chat-box');
-        const div = document.createElement('div');
-        div.className = isSystem ? 'chat-msg chat-system' : 'chat-msg';
-        
-        div.innerHTML = isSystem ? text : `<b>[${sender}]</b>: ${text}`;
-        box.appendChild(div);
-        box.scrollTop = box.scrollHeight;
-    }
-
-    // --- CHAT INPUT HANDLER ---
-    document.getElementById('chat-input').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && e.target.value.trim() !== "") {
-            const rawMsg = e.target.value;
-            let finalMsg = moderate(rawMsg);
-
-            // If flagged, replace the entire message with asterisks
-            if (finalMsg === "FLAGGED_BY_AI") {
-                finalMsg = "****";
-            }
-
-            // Update local UI
-            addChatMessage('YOU', finalMsg);
-
-            // Send to peers if connected
-            if (activeConn) {
-                activeConn.send({ type: 'chat', text: finalMsg, from: myNation });
-            }
-
-            e.target.value = "";
-            // Regain control of the ship after chatting
-            document.body.requestPointerLock();
+    // --- SESSION LAUNCH (WIPES LOGIN DATA) ---
+    window.launchSession = (nation, color) => {
+        const user = document.getElementById('username-input').value.trim();
+        if (user.length < 2) {
+            document.getElementById('load-status').innerText = "ERR: INVALID CALLSIGN";
+            return;
         }
-    });
 
-    window.joinGame = (nation, color) => {
-        if (!ship) return;
-        myNation = nation;
-        document.getElementById('lobby').style.display = 'none';
+        // Wipe UI immediately
+        document.getElementById('login-overlay').style.display = 'none';
+        document.getElementById('ui').style.display = 'block';
+        document.getElementById('mode-tag').style.display = 'block';
+        document.getElementById('display-name').innerText = user.toUpperCase();
         document.getElementById('nation-tag').innerText = nation;
-        document.getElementById('nation-tag').style.color = '#' + color.toString(16);
         
-        if(nation === 'USSR') {
-            ship.children[0].geometry = new THREE.BoxGeometry(5, 2.5, 15);
-            bulletVelocity = 6;
-        }
-
-        ship.children[0].material.color.setHex(color);
-        ship.children[1].material.color.setHex(color);
-
-        myPeer = new Peer();
-        myPeer.on('open', (id) => { 
-            document.getElementById('my-id-display').innerText = id;
-            addChatMessage("SYSTEM", `Fleet connection open. ID: ${id}`, true);
-        });
-
-        myPeer.on('connection', (conn) => {
-            activeConn = conn;
-            setupConnListeners(conn);
-        });
+        myNation = nation;
+        initUltra(user, color);
     };
 
-    window.connectToFriend = () => {
-        const id = document.getElementById('join-id-input').value;
-        if (id && myPeer) {
-            activeConn = myPeer.connect(id);
-            setupConnListeners(activeConn);
-        }
-    };
-
-    function setupConnListeners(conn) {
-        conn.on('open', () => addChatMessage("SYSTEM", "Ally fleet connected.", true));
-        conn.on('data', (data) => {
-            if (data.type === 'chat') addChatMessage(data.from, data.text);
-        });
-    }
-
-    window.copyID = () => {
-        navigator.clipboard.writeText(document.getElementById('my-id-display').innerText);
-        addChatMessage("SYSTEM", "ID copied to clipboard.", true);
-    };
-
-    function fireCannon() {
-        if (!canFire || !myNation) return;
-        canFire = false;
-        document.getElementById('reload-ui').innerText = "RELOADING...";
-        document.getElementById('reload-ui').style.color = "#f44";
-
-        const bGeo = new THREE.SphereGeometry(0.4);
-        const bMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
-        const bullet = new THREE.Mesh(bGeo, bMat);
-
-        bullet.position.copy(ship.position).y += 2.5; 
-        const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
-        
-        bullets.push({ mesh: bullet, vel: dir.multiplyScalar(bulletVelocity) });
-        scene.add(bullet);
-
-        setTimeout(() => {
-            canFire = true;
-            document.getElementById('reload-ui').innerText = "CANNONS READY";
-            document.getElementById('reload-ui').style.color = "#0f0";
-        }, myNation === 'USSR' ? 1000 : 600);
-    }
-
-    function init() {
+    // --- THE POLISHED ENGINE ---
+    function initUltra(name, nationColor) {
         scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x00050a, 0.0006); // Atmospheric depth
+
         camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
+        
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; // Cinematic color grading
+        renderer.toneMappingExposure = 1.2;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
         document.body.appendChild(renderer.domElement);
 
+        // --- POST-PROCESSING (THE POLISH) ---
+        composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        
+        // Bloom makes engines and explosions glow
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.6, 0.5, 0.85);
+        composer.addPass(bloomPass);
+        composer.addPass(new OutputPass());
+
+        // --- REALISTIC ENVIRONMENT (HDR) ---
+        new RGBELoader().load('sky.hdr', (texture) => {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.environment = texture;
+            scene.background = texture;
+        });
+
+        // --- WATER (ADVANCED PBR) ---
         water = new Water(new THREE.PlaneGeometry(10000, 10000), {
             textureWidth: 512, textureHeight: 512,
             waterNormals: new THREE.TextureLoader().load('https://threejs.org/examples/textures/waternormals.jpg', (t) => t.wrapS = t.wrapT = THREE.RepeatWrapping),
-            sunDirection: new THREE.Vector3(1, 1, 1).normalize(), sunColor: 0xffffff, waterColor: 0x000a15, distortionScale: 4.0
+            sunDirection: new THREE.Vector3(1, 1, 1).normalize(), sunColor: 0xffffff, waterColor: 0x000205, distortionScale: 4.0
         });
         water.rotation.x = -Math.PI / 2;
         scene.add(water);
 
+        // --- THE SHIP (ASSET LOADING) ---
         ship = new THREE.Group();
-        const hull = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 12), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-        hull.position.y = 1;
-        const bridge = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 3), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-        bridge.position.set(0, 3, -1);
-        ship.add(hull, bridge);
         scene.add(ship);
-        ship.add(camera);
-        camera.position.set(0, 12, -32);
-        camera.lookAt(ship.position);
 
-        scene.add(new THREE.AmbientLight(0x444444));
-        const sun = new THREE.DirectionalLight(0xffffff, 2);
+        const loader = new GLTFLoader();
+        loader.load('ship.glb', (gltf) => {
+            const model = gltf.scene;
+            model.traverse((child) => {
+                if (child.isMesh) {
+                    child.material.metalness = 0.8;
+                    child.material.roughness = 0.2;
+                }
+            });
+            ship.add(model);
+        }, undefined, (e) => {
+            // Fallback if model not found
+            const fallbackHull = new THREE.Mesh(new THREE.BoxGeometry(6, 2, 18), new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.1 }));
+            fallbackHull.position.y = 1;
+            ship.add(fallbackHull);
+            addChatMessage("SYSTEM", "ERR: SHIP_MODEL NOT FOUND. USING COMPAT_HULL.", true);
+        });
+
+        // --- PLAYER AVATAR & NAME ---
+        playerGroup = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.8, 4, 8), new THREE.MeshStandardMaterial({ color: nationColor }));
+        body.position.y = 1.1;
+        playerGroup.add(body);
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 256; canvas.height = 64;
+        ctx.font = 'bold 30px Courier New'; ctx.fillStyle = '#0f0'; ctx.textAlign = 'center'; ctx.fillText(name.toUpperCase(), 128, 45);
+        const texture = new THREE.CanvasTexture(canvas);
+        const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+        label.position.y = 2.8; label.scale.set(4, 1, 1);
+        playerGroup.add(label);
+        
+        playerGroup.position.set(0, 2.1, 0); // Start on deck
+        ship.add(playerGroup);
+
+        // Lights
+        scene.add(new THREE.AmbientLight(0x111111));
+        const sun = new THREE.DirectionalLight(0xffffff, 2.5);
         sun.position.set(50, 100, 50); scene.add(sun);
 
-        document.addEventListener('mousedown', (e) => {
-            if (e.target.id === "chat-input" || e.target.id === "chat-box") return;
-            if (!isLocked && myNation) document.body.requestPointerLock();
-            else if (isLocked) fireCannon();
-        });
+        setupEventsUltra();
+        animateUltra();
+    }
 
-        document.addEventListener('pointerlockchange', () => {
-            isLocked = document.pointerLockElement === document.body;
-            document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none';
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (isLocked) {
-                ship.rotation.y -= e.movementX * 0.002;
-                pitch = Math.max(-0.4, Math.min(0.2, pitch - e.movementY * 0.002));
-                camera.position.y = 12 + (pitch * 15);
-                camera.lookAt(ship.position);
-            }
-        });
-
-        window.onkeydown = (e) => {
-            if (document.activeElement.id === 'chat-input') return;
-            keys[e.code] = true;
-        };
+    // --- INTERACTION ENGINE ---
+    function setupEventsUltra() {
+        document.addEventListener('pointerlockchange', () => { isLocked = document.pointerLockElement === document.body; document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none'; });
+        document.addEventListener('mousedown', () => { if(!isLocked && myNation) document.body.requestPointerLock(); else if(isLocked) fireUltra(); });
+        document.addEventListener('mousemove', (e) => { if (isLocked) ship.rotation.y -= e.movementX * SHIP_TURN_RATE; });
+        window.onkeydown = (e) => { keys[e.code] = true; if(e.code === 'ShiftLeft') toggleControlMode(); };
         window.onkeyup = (e) => keys[e.code] = false;
-
-        animate();
     }
 
-    function animate() {
-        requestAnimationFrame(animate);
-        if(isLocked && myNation) {
-            if(keys['KeyW']) velocity += 0.006;
-            if(keys['KeyS']) velocity -= 0.004;
-            velocity *= 0.985;
-            ship.translateZ(velocity);
-            document.getElementById('spd').innerText = Math.abs(velocity * 100).toFixed(1);
+    function toggleControlMode() {
+        if(isDestroyed) return;
+        isWalking = !isWalking;
+        document.getElementById('mode-tag').innerText = isWalking ? "MODE: WALKING (DECK)" : "MODE: STEERING (SHIP)";
+        document.getElementById('mode-tag').style.color = isWalking ? "#0ff" : "#ff0";
+    }
+
+    // --- COMBAT & DESTRUCTION ENGINE ---
+    function fireUltra() {
+        if (isDestroyed || isWalking) return; 
+        
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({ color: 0xffcc00 }));
+        // Fire from player position
+        b.position.copy(playerGroup.getWorldPosition(new THREE.Vector3()));
+        
+        const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
+        bullets.push({ mesh: b, vel: dir.multiplyScalar(BULLET_VEL) });
+        scene.add(b);
+        
+        // Simulating immediate recoil/flash bloom
+        explode(b.position, 0xffffff, 2); 
+    }
+
+    function explode(position, color, intensity = 15) {
+        for (let i = 0; i < intensity; i++) {
+            const fragGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+            const fragMat = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 5 });
+            const frag = new THREE.Mesh(fragGeo, fragMat);
+            
+            frag.position.copy(position);
+            frag.userData.velocity = new THREE.Vector3((Math.random()-0.5)*0.8, Math.random()*0.8, (Math.random()-0.5)*0.8);
+            frag.userData.life = 1.0; // Life multiplier
+            
+            fragments.push(frag);
+            scene.add(frag);
         }
-        for (let i = bullets.length - 1; i >= 0; i--) {
-            bullets[i].mesh.position.add(bullets[i].vel);
-            if (bullets[i].mesh.position.distanceTo(ship.position) > 1000) {
-                scene.remove(bullets[i].mesh);
-                bullets.splice(i, 1);
+    }
+
+    function takeDamage(amt) {
+        if(isDestroyed) return;
+        health -= amt;
+        const fill = document.getElementById('health-fill');
+        fill.style.width = (health / PLAYER_MAX_HP * 100) + "%";
+        
+        explode(ship.position, 0xff4400, 5); // Immediate hit effect
+
+        if (health <= 0) catastrophicFailure();
+    }
+
+    function catastrophicFailure() {
+        isDestroyed = true;
+        velocity = 0;
+        
+        // Massive explosion sequence
+        explode(ship.position, 0xffaa00, 30); // Fire
+        explode(ship.position, 0x222222, 20); // Dark debris
+
+        // Hide main ship parts, leave player visible (the sole survivor)
+        ship.children[0].visible = false; 
+        
+        if(!isWalking) toggleControlMode(); // Force walking mode on wreck
+        
+        addChatMessage("SYSTEM", "CRITICAL LOSS. VESSEL DESTROYED.", true);
+    }
+
+    // --- ANIMATION & PHYSICS ---
+    function animateUltra() {
+        requestAnimationFrame(animateUltra);
+        
+        if (isLocked && !isDestroyed) {
+            if (!isWalking) {
+                if (keys['KeyW']) velocity += 0.005;
+                if (keys['KeyS']) velocity -= 0.003;
+            } else {
+                // Deck Walking (Relative Physics)
+                const walkSpeed = 0.15;
+                if (keys['KeyW']) playerGroup.position.z += walkSpeed;
+                if (keys['KeyS']) playerGroup.position.z -= walkSpeed;
+                if (keys['KeyA']) playerGroup.position.x += walkSpeed;
+                if (keys['KeyD']) playerGroup.position.x -= walkSpeed;
+                
+                // Deck Bounds
+                playerGroup.position.x = Math.max(-DECK_SIZE.x/2, Math.min(DECK_SIZE.x/2, playerGroup.position.x));
+                playerGroup.position.z = Math.max(-DECK_SIZE.z/2, Math.min(DECK_SIZE.z/2, playerGroup.position.z));
             }
         }
+
+        // Ocean Physics
+        velocity *= 0.992;
+        ship.translateZ(velocity);
+        document.getElementById('spd').innerText = Math.abs(velocity * 100).toFixed(1);
+
+        // Camera Physics (Polished follow)
+        const idealOffset = new THREE.Vector3(0, 15, -28).applyQuaternion(ship.quaternion);
+        camera.position.lerp(ship.position.clone().add(idealOffset), 0.1); // Smooth lerp
+        camera.lookAt(ship.position);
+
+        // Advanced Destruction (Fragments)
+        for (let i = fragments.length - 1; i >= 0; i--) {
+            const f = fragments[i];
+            f.position.add(f.userData.velocity);
+            f.userData.velocity.y -= 0.02; // Gravity
+            f.userData.life -= 0.01; // Fade
+            f.material.opacity = f.userData.life;
+            f.scale.multiplyScalar(0.98); // Shrink
+
+            if (f.position.y < -2 || f.userData.life <= 0) {
+                scene.remove(f);
+                fragments.splice(i, 1);
+            }
+        }
+
+        // Bullet Physics
+        bullets.forEach((b, i) => {
+            b.mesh.position.add(b.vel);
+            if(b.mesh.position.distanceTo(ship.position) > 1000) { scene.remove(b.mesh); bullets.splice(i, 1); }
+        });
+
         water.material.uniforms['time'].value += 1.0 / 60.0;
-        renderer.render(scene, camera);
+        
+        if (composer) composer.render();
     }
-    init();
+
+    function addChatMessage(sender, text, isSystem = false) {
+        // Polished Chat is minimal, only in console/addChatMessage for system
+        console.log(`[${sender}] ${text}`);
+    }
+
 </script>
 </body>
 </html>
