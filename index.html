@@ -3,228 +3,473 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WWI Naval Warfare – USA vs USSR (Multiplayer)</title>
+  <title>WWI Naval Warfare – Block Edition (Mouse Lock)</title>
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: #000;
-      font-family: Arial, sans-serif;
+    body { margin: 0; overflow: hidden; background: #0a141d; font-family: 'Courier New', monospace; }
+    
+    /* Main Menu / Lobby Selector */
+    #lobby-menu {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(circle, #1a2a3a 0%, #0a1118 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 100; color: #fff; text-align: center;
     }
-    #status {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: white;
-      font-family: Arial, sans-serif;
-      background: rgba(0, 0, 0, 0.6);
-      padding: 8px 14px;
-      border-radius: 6px;
-      font-size: 14px;
-      border: 1px solid #444;
-      z-index: 10;
-      pointer-events: none;
+    .lobby-card {
+      background: rgba(255,255,255,0.05); border: 2px solid #3a506b; padding: 25px;
+      margin: 15px; border-radius: 8px; width: 320px; transition: 0.3s; cursor: pointer;
+    }
+    .lobby-card:hover { background: rgba(255,255,255,0.15); border-color: #00b4d8; transform: scale(1.03); }
+    .usa-team { color: #4444ff; font-weight: bold; }
+    .ussr-team { color: #ff4444; font-weight: bold; }
+    
+    /* HUD Overlay */
+    #hud {
+      position: absolute; top: 20px; right: 20px;
+      background: rgba(10, 20, 30, 0.85); padding: 15px; border-radius: 6px;
+      color: #fff; border: 2px solid #3a506b; z-index: 10; display: none;
+    }
+    #health-container {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      width: 350px; height: 22px; background: #222; border: 2px solid #fff; z-index: 10; display: none;
+    }
+    #health-fill { width: 100%; height: 100%; background: #00ff66; transition: width 0.1s; }
+    #controls-hint {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.8); color: #fff; padding: 10px 20px; border-radius: 30px;
+      font-size: 13px; z-index: 10; border: 1px solid #444; display: none; text-align: center;
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
 </head>
 <body>
 
-<div id="status">Connecting to server...</div>
+  <div id="lobby-menu">
+    <h1 style="letter-spacing: 4px; margin-bottom: 5px;">WWI NAVAL COMBAT LOBBIES</h1>
+    <p style="color: #8a9a8a; margin-bottom: 40px;">Select an active server instance to deploy your dreadnought</p>
+    
+    <div class="lobby-card" onclick="joinMatch('USA')">
+      <h3>SERVER LOBBY #01 [NORTH ATLANTIC]</h3>
+      <p>Status: <span style="color:#00ff66;">Active Combat</span></p>
+      <p>Deploy as: <span class="usa-team">US NAVY DREADNOUGHT</span></p>
+    </div>
+
+    <div class="lobby-card" onclick="joinMatch('USSR')">
+      <h3>SERVER LOBBY #02 [BALTIC SEA]</h3>
+      <p>Status: <span style="color:#00ff66;">Active Combat</span></p>
+      <p>Deploy as: <span class="ussr-team">SOVIET BALTIC FLEET</span></p>
+    </div>
+  </div>
+
+  <div id="health-container"><div id="health-fill"></div></div>
+  
+  <div id="hud">
+    <h4 style="margin:0 0 10px 0; color:#00b4d8;">MATCHMAKING SERVER #04</h4>
+    <p>Your Faction: <span id="faction-tag">Loading...</span></p>
+    <p>Combat Status: <span style="color:#00ff66;">Connected</span></p>
+    <hr style="border:0; border-top:1px solid #3a506b;">
+    <p>Enemy Casualties: <span id="score-val" style="color:#ffeb3b; font-weight:bold;">0</span></p>
+  </div>
+
+  <div id="controls-hint">
+    [W/S] Throttle | [A/D] Rudder | [Mouse Move] Rotate Gun Turrets<br>
+    <span style="color: #ffeb3b;">Click Game Screen to Lock Mouse & Fire Weapons</span>
+  </div>
 
 <script>
 // ======================================================
-// ===============  OCEAN SYSTEM ========================
-// ======================================================
-function createOcean() {
-  const geo = new THREE.PlaneGeometry(2000, 2000, 128, 128);
-  const mat = new THREE.MeshPhongMaterial({
-    color: 0x1e90ff,
-    shininess: 20,
-    flatShading: true
-  });
-  const ocean = new THREE.Mesh(geo, mat);
-  ocean.rotation.x = -Math.PI / 2;
-  return ocean;
-}
-
-// ======================================================
-// ===============  SHIP CLASS ==========================
-// ======================================================
-class Ship {
-  constructor(color = 0x333333) {
-    this.mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(4, 1, 12),
-      new THREE.MeshStandardMaterial({ color: color })
-    );
-    this.mesh.position.y = 1;
-
-    this.speed = 0;
-    this.turnSpeed = 0.02;
-
-    this.keys = {};
-    window.addEventListener('keydown', e => this.keys[e.code] = true);
-    window.addEventListener('keyup', e => this.keys[e.code] = false);
-  }
-
-  update() {
-    if (this.keys['KeyW']) this.speed = 0.2;
-    else if (this.keys['KeyS']) this.speed = -0.1;
-    else this.speed *= 0.95; // Water drag friction
-
-    if (this.keys['KeyA']) this.mesh.rotation.y += this.turnSpeed;
-    if (this.keys['KeyD']) this.mesh.rotation.y -= this.turnSpeed;
-
-    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.mesh.quaternion);
-    this.mesh.position.add(forward.multiplyScalar(this.speed));
-  }
-}
-
-// ======================================================
-// ===============  SCENE SETUP =========================
+// ===============  GLOBAL GAME STATE ===================
 // ======================================================
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+scene.background = new THREE.Color(0x1a2630);
+scene.fog = new THREE.FogExp2(0x1a2630, 0.012);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Lighting
-scene.add(new THREE.DirectionalLight(0xffffff, 0.8));
-scene.add(new THREE.AmbientLight(0x888888));
+// Lighting setup
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(80, 100, 40);
+scene.add(sun);
+scene.add(new THREE.AmbientLight(0x2d3b45, 1.4));
 
-// Ocean
-const ocean = createOcean();
+let playerShip;
+let myFaction = '';
+let gameActive = false;
+let score = 0;
+let turretYaw = 0; // Global rotation delta for locked mouse control
+
+const activeBots = [];
+const activeShells = [];
+const activeExplosions = [];
+
+// ======================================================
+// ===============  VOXEL/BLOCK MODEL ENGINE ============
+// ======================================================
+function createBlockyShip(factionColor) {
+  const shipGroup = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: factionColor, roughness: 0.6, flatShading: true });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1d2124, roughness: 0.7, flatShading: true });
+
+  // 1. Main Hull Blocks
+  const hullBottom = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 14), mat);
+  hullBottom.position.y = 0.6;
+  shipGroup.add(hullBottom);
+
+  // 2. Voxel Bow Blocks
+  const bowBase = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.2, 3), mat);
+  bowBase.position.set(0, 0.6, 8);
+  shipGroup.add(bowBase);
+  
+  const bowTip = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 2), mat);
+  bowTip.position.set(0, 0.6, 10.5);
+  shipGroup.add(bowTip);
+
+  // 3. Raised Deck Armour
+  const deckArmour = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.6, 11), mat);
+  deckArmour.position.set(0, 1.5, -0.5);
+  shipGroup.add(deckArmour);
+
+  // 4. Command Bridge Towers
+  const bridgeTier1 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 3.5), mat);
+  bridgeTier1.position.set(0, 2.5, 0.5);
+  shipGroup.add(bridgeTier1);
+
+  const bridgeTier2 = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 2), darkMat);
+  bridgeTier2.position.set(0, 3.8, 1);
+  shipGroup.add(bridgeTier2);
+
+  // 5. Smokestacks
+  const funnel1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2, 1), darkMat);
+  funnel1.position.set(0, 3, -2);
+  const funnel2 = funnel1.clone();
+  funnel2.position.set(0, 3, -4.5);
+  shipGroup.add(funnel1, funnel2);
+
+  // 6. Front & Rear Rotating Gun Turrets
+  const turretFront = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.8, 2.5), darkMat);
+  turretFront.position.set(0, 2.2, 5);
+  const barrelFront = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 3), darkMat);
+  barrelFront.position.set(0, 0, 1.5);
+  turretFront.add(barrelFront);
+  shipGroup.add(turretFront);
+
+  const turretRear = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.8, 2.5), darkMat);
+  turretRear.position.set(0, 2.2, -4.5);
+  const barrelRear = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 3), darkMat);
+  barrelRear.position.set(0, 0, -1.5); // Points backwards initially
+  turretRear.add(barrelRear);
+  shipGroup.add(turretRear);
+
+  // Cache object references into parent user data array for structural tracking updates
+  shipGroup.userData = { turretFront, turretRear };
+
+  return shipGroup;
+}
+
+// ======================================================
+// ===============  DYNAMIC OCEAN MODULE ================
+// ======================================================
+const oceanGeo = new THREE.PlaneGeometry(1600, 1600, 80, 80);
+const oceanMat = new THREE.MeshPhongMaterial({
+  color: 0x162a3b, shininess: 35, flatShading: true
+});
+const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+ocean.rotation.x = -Math.PI / 2;
 scene.add(ocean);
 
-// Local Player Ship (Blue - USA)
-const player = new Ship(0x4444ff);
-scene.add(player.mesh);
+const posAttr = oceanGeo.attributes.position;
+const originalZ = [];
+for (let i = 0; i < posAttr.count; i++) {
+  originalZ.push(posAttr.getZ(i));
+}
 
-camera.position.set(0, 8, -18);
+function processWaves(elapsedTime) {
+  for (let i = 0; i < posAttr.count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const zMod = Math.sin(x * 0.04 + elapsedTime * 2.2) * 0.7 + 
+                 Math.cos(y * 0.04 + elapsedTime * 1.8) * 0.5;
+    posAttr.setZ(i, zMod);
+  }
+  posAttr.needsUpdate = true;
+  oceanGeo.computeVertexNormals();
+}
 
 // ======================================================
-// ===============  PROJECTILES =========================
+// ===============  SHIP CONTROLLER CLASS ===============
 // ======================================================
-const bullets = [];
+class ClientShip {
+  constructor(faction, isPlayer, startX, startZ) {
+    this.faction = faction;
+    this.isPlayer = isPlayer;
+    this.color = faction === 'USA' ? 0x5a6d80 : 0x992222;
+    
+    this.mesh = createBlockyShip(this.color);
+    this.mesh.position.set(startX, 0, startZ);
+    scene.add(this.mesh);
 
+    this.speed = 0;
+    this.maxSpeed = isPlayer ? 0.22 : 0.08;
+    this.acceleration = 0.004;
+    this.friction = 0.975;
+    this.turnSpeed = 0.016;
+    this.health = 100;
+
+    if (this.isPlayer) {
+      this.keys = {};
+      window.addEventListener('keydown', e => this.keys[e.code] = true);
+      window.addEventListener('keyup', e => this.keys[e.code] = false);
+    }
+  }
+
+  update(time) {
+    if (this.health <= 0) {
+      this.mesh.position.y = Math.max(this.mesh.position.y - 0.03, -3);
+      this.mesh.rotation.z += 0.005;
+      return;
+    }
+
+    if (this.isPlayer) {
+      if (this.keys['KeyW']) this.speed = Math.min(this.speed + this.acceleration, this.maxSpeed);
+      else if (this.keys['KeyS']) this.speed = Math.max(this.speed - this.acceleration, -this.maxSpeed / 2);
+      else this.speed *= this.friction;
+
+      if (this.keys['KeyA']) this.mesh.rotation.y += this.turnSpeed;
+      if (this.keys['KeyD']) this.mesh.rotation.y -= this.turnSpeed;
+
+      // Apply mouse lock yaw settings directly onto local gun models
+      if (this.mesh.userData.turretFront) this.mesh.userData.turretFront.rotation.y = turretYaw;
+      if (this.mesh.userData.turretRear) this.mesh.userData.turretRear.rotation.y = turretYaw;
+    }
+
+    const forwardVec = new THREE.Vector3(0, 0, 1).applyQuaternion(this.mesh.quaternion);
+    this.mesh.position.add(forwardVec.multiplyScalar(this.speed));
+    this.mesh.position.y = Math.sin(this.mesh.position.x * 0.04 + time * 2.2) * 0.3 + 0.1;
+  }
+}
+
+// ======================================================
+// ===============  AIMED FIRE & BALLISTICS ============
+// ======================================================
+function fireActiveTurrets(originShip) {
+  const turrets = [originShip.mesh.userData.turretFront, originShip.mesh.userData.turretRear];
+
+  turrets.forEach((turret, index) => {
+    if (!turret) return;
+
+    const shellMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 0.4, 0.4),
+      new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+    );
+
+    // Get exact position of the turret in world space
+    shellMesh.position.setFromMatrixPosition(turret.matrixWorld);
+    scene.add(shellMesh);
+
+    // Calculate exact vector target direction the barrels are facing
+    const launchDir = new THREE.Vector3(0, 0, index === 0 ? 1 : -1); 
+    launchDir.applyQuaternion(turret.quaternion);
+    launchDir.applyQuaternion(originShip.mesh.quaternion);
+    launchDir.normalize();
+
+    const trajectory = launchDir.multiplyScalar(1.5);
+    trajectory.y = 0.15; // Arc height factor
+
+    activeShells.push({
+      mesh: shellMesh,
+      vel: trajectory,
+      life: 90,
+      owner: originShip
+    });
+  });
+
+  generateExplosionParticles(originShip.mesh.position, 0xff7700, 8);
+}
+
+function generateExplosionParticles(position, colorValue, density) {
+  for(let i=0; i<density; i++) {
+    const part = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.3, 0.3),
+      new THREE.MeshBasicMaterial({ color: colorValue, transparent: true, opacity: 1 })
+    );
+    part.position.copy(position);
+    scene.add(part);
+    activeExplosions.push({
+      mesh: part,
+      vel: new THREE.Vector3((Math.random()-0.5)*0.5, (Math.random())*0.4, (Math.random()-0.5)*0.5),
+      life: 25
+    });
+  }
+}
+
+// MOUSE LOCK INTERACTION HANDLING HANDLER
 window.addEventListener('click', () => {
-  const b = new THREE.Mesh(
-    new THREE.SphereGeometry(0.2),
-    new THREE.MeshBasicMaterial({ color: 0xffaa00 })
-  );
+  if (!gameActive) return;
 
-  // Position bullet at front deck of the ship
-  b.position.copy(player.mesh.position)
-    .add(new THREE.Vector3(0, 1, 6).applyQuaternion(player.mesh.quaternion));
+  // Request pointer lock confirmation if screen window isn't focused
+  if (document.pointerLockElement !== renderer.domElement) {
+    renderer.domElement.requestPointerLock();
+  } else {
+    // If already safely locked down, fire guns on left-click interaction
+    if (playerShip && playerShip.health > 0) {
+      fireActiveTurrets(playerShip);
+    }
+  }
+});
 
-  // Forward velocity vector mapping
-  b.userData.vel = new THREE.Vector3(0, 0, 1)
-    .applyQuaternion(player.mesh.quaternion)
-    .multiplyScalar(1.2);
-
-  scene.add(b);
-  bullets.push(b);
+// Capture raw unconstrained browser mouse movements values
+window.addEventListener('mousemove', (e) => {
+  if (document.pointerLockElement === renderer.domElement && playerShip) {
+    // Sensitivity scale transformation value
+    turretYaw -= e.movementX * 0.003;
+  }
 });
 
 // ======================================================
-// ===============  MULTIPLAYER CLIENT ==================
+// ===============  MATCH SETUP CONNECTIONS =============
 // ======================================================
-const statusElement = document.getElementById("status");
-let socket;
-let players = {}; // Fleet tracking container for remote players
+function joinMatch(selectedFaction) {
+  myFaction = selectedFaction;
+  
+  document.getElementById('lobby-menu').style.display = 'none';
+  document.getElementById('hud').style.display = 'block';
+  document.getElementById('health-container').style.display = 'block';
+  document.getElementById('controls-hint').style.display = 'block';
 
-function connect() {
-  // Points to your local or deployed WebSocket server
-  socket = new WebSocket("ws://localhost:8080");
+  const factionTag = document.getElementById('faction-tag');
+  factionTag.innerText = selectedFaction === 'USA' ? 'United States Navy' : 'Soviet Fleet';
+  factionTag.className = selectedFaction === 'USA' ? 'usa-team' : 'ussr-team';
 
-  socket.onopen = () => {
-    statusElement.textContent = "Connected to Server | Team: USA";
-    statusElement.style.color = "#4caf50";
-  };
+  playerShip = new ClientShip(myFaction, true, 0, 0);
 
-  socket.onmessage = msg => {
-    const data = JSON.parse(msg.data);
+  const opponentFaction = myFaction === 'USA' ? 'USSR' : 'USA';
+  for (let i = 0; i < 5; i++) {
+    const rX = (Math.random() - 0.5) * 320 + (Math.random() > 0.5 ? 90 : -90);
+    const rZ = (Math.random() - 0.5) * 320 + (Math.random() > 0.5 ? 90 : -90);
+    const bot = new ClientShip(opponentFaction, false, rX, rZ);
+    bot.speed = 0.05 + Math.random() * 0.04;
+    activeBots.push(bot);
+  }
 
-    if (data.type === "state") {
-      for (let id in data.players) {
-        // If a new player has joined, spawn them into the scene (Red - USSR)
-        if (!players[id]) {
-          players[id] = new Ship(0xff4444);
-          scene.add(players[id].mesh);
-        }
-        
-        // Synchronize remote player spatial coordinates
-        players[id].mesh.position.set(
-          data.players[id].x,
-          1,
-          data.players[id].z
-        );
-        players[id].mesh.rotation.y = data.players[id].rot;
-      }
-
-      // Handle disconnected players by cleaning them from the scene grid
-      for (let id in players) {
-        if (!data.players[id]) {
-          scene.remove(players[id].mesh);
-          delete players[id];
-        }
-      }
-    }
-  };
-
-  socket.onclose = () => {
-    statusElement.textContent = "Disconnected – retrying connection…";
-    statusElement.style.color = "#f44336";
-    setTimeout(connect, 2000);
-  };
+  // Request auto-lock instantly upon joining match profiles
+  renderer.domElement.requestPointerLock();
+  gameActive = true;
 }
 
-connect();
-
-// Send local engine metrics 20 times per second to syncing socket
-setInterval(() => {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({
-      x: player.mesh.position.x,
-      z: player.mesh.position.z,
-      rot: player.mesh.rotation.y
-    }));
-  }
-}, 50);
-
 // ======================================================
-// ===============  GAME LOOP ===========================
+// ===============  MAIN ENGINE LOOP ====================
 // ======================================================
+const clock = new THREE.Clock();
+
 function animate() {
   requestAnimationFrame(animate);
+  const elapsedTime = clock.getElapsedTime();
 
-  // Handle local physics update
-  player.update();
+  processWaves(elapsedTime);
 
-  // Update dynamic bullet vector trajectories
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    const b = bullets[i];
-    b.position.add(b.userData.vel);
+  if (gameActive) {
+    playerShip.update(elapsedTime);
 
-    // Range threshold bounds collection
-    if (b.position.distanceTo(player.mesh.position) > 500) {
-      scene.remove(b);
-      bullets.splice(i, 1);
+    if (playerShip.health > 0) {
+      const cameraOffset = new THREE.Vector3(0, 10, -26).applyMatrix4(playerShip.mesh.matrixWorld);
+      camera.position.lerp(cameraOffset, 0.08);
+      camera.lookAt(playerShip.mesh.position.x, playerShip.mesh.position.y + 2, playerShip.mesh.position.z);
+    } else {
+      camera.position.y = Math.max(camera.position.y - 0.01, 5);
+      camera.lookAt(playerShip.mesh.position);
     }
+
+    // Process Bot Tracking AI
+    activeBots.forEach((bot) => {
+      bot.update(elapsedTime);
+
+      if (bot.health > 0) {
+        bot.mesh.lookAt(playerShip.mesh.position);
+        
+        // Make bot turrets look at the player ship
+        if(bot.mesh.userData.turretFront) bot.mesh.userData.turretFront.lookAt(playerShip.mesh.position);
+        if(bot.mesh.userData.turretRear) bot.mesh.userData.turretRear.lookAt(playerShip.mesh.position);
+
+        bot.mesh.rotation.y += Math.PI / 2; // Keep hull flat at broadside angle
+
+        if (Math.random() < 0.003 && playerShip.health > 0) {
+          if (bot.mesh.position.distanceTo(playerShip.mesh.position) < 150) {
+            fireActiveTurrets(bot);
+          }
+        }
+      }
+    });
+
+    // Process Projectile Traces & Splashes Frame Maps
+    for (let i = activeShells.length - 1; i >= 0; i--) {
+      const shell = activeShells[i];
+      shell.mesh.position.add(shell.vel);
+      shell.vel.y -= 0.006;
+      shell.life--;
+
+      let trackingHit = false;
+
+      if (shell.owner.faction === myFaction) {
+        for (let j = activeBots.length - 1; j >= 0; j--) {
+          const targetedBot = activeBots[j];
+          if (targetedBot.health > 0 && shell.mesh.position.distanceTo(targetedBot.mesh.position) < 7) {
+            trackingHit = true;
+            targetedBot.health -= 25;
+            generateExplosionParticles(shell.mesh.position, 0xff3300, 12);
+
+            if (targetedBot.health <= 0) {
+              generateExplosionParticles(targetedBot.mesh.position, 0xff0000, 40);
+              score++;
+              document.getElementById('score-val').innerText = score;
+            }
+            break;
+          }
+        }
+      } else {
+        if (playerShip.health > 0 && shell.mesh.position.distanceTo(playerShip.mesh.position) < 6) {
+          trackingHit = true;
+          playerShip.health = Math.max(0, playerShip.health - 10);
+          document.getElementById('health-fill').style.width = playerShip.health + '%';
+          generateExplosionParticles(shell.mesh.position, 0xff3300, 15);
+
+          if (playerShip.health <= 0) {
+            generateExplosionParticles(playerShip.mesh.position, 0xff1111, 60);
+            alert("YOUR BATTLESHIP HAS BEEN SUNK! Refresh to redeploy.");
+          }
+        }
+      }
+
+      if (trackingHit || shell.life <= 0 || shell.mesh.position.y < -0.5) {
+        if (!trackingHit) generateExplosionParticles(shell.mesh.position, 0xffffff, 3);
+        scene.remove(shell.mesh);
+        activeShells.splice(i, 1);
+      }
+    }
+
+    // Particle Cleanup Processing
+    for (let i = activeExplosions.length - 1; i >= 0; i--) {
+      const exp = activeExplosions[i];
+      exp.mesh.position.add(exp.vel);
+      exp.mesh.material.opacity = exp.life / 25;
+      exp.life--;
+
+      if (exp.life <= 0) {
+        scene.remove(exp.mesh);
+        activeExplosions.splice(i, 1);
+      }
+    }
+  } else {
+    camera.position.x = Math.sin(elapsedTime * 0.2) * 35;
+    camera.position.z = Math.cos(elapsedTime * 0.2) * 35;
+    camera.position.y = 12;
+    camera.lookAt(0, 0, 0);
   }
-
-  // Camera third-person smooth tracking (chase camera)
-  const camTarget = player.mesh.position.clone()
-    .add(new THREE.Vector3(0, 6, -14).applyQuaternion(player.mesh.quaternion));
-
-  camera.position.lerp(camTarget, 0.12);
-  camera.lookAt(player.mesh.position);
 
   renderer.render(scene, camera);
 }
 
-// Responsive window resizing adjustment
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -233,6 +478,5 @@ window.addEventListener('resize', () => {
 
 animate();
 </script>
-
 </body>
 </html>
