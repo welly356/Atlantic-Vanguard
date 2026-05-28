@@ -1,225 +1,238 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WWI Naval Warfare: USA vs Russian Empire</title>
-    <style>
-        body { margin: 0; overflow: hidden; font-family: monospace; background: #000; }
-        #ui {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(20, 30, 40, 0.9); padding: 30px; border-radius: 8px;
-            color: #fff; text-align: center; border: 2px solid #5a6d80; z-index: 10;
-        }
-        button {
-            background: #5a6d80; color: white; border: none; padding: 10px 20px;
-            margin: 10px; cursor: pointer; font-size: 16px; font-family: monospace;
-        }
-        button:hover { background: #7a8d10; }
-        input { padding: 10px; width: 200px; text-align: center; font-family: monospace; }
-        #status { position: absolute; top: 10px; left: 10px; color: white; z-index: 10; font-size: 18px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WWI Naval Warfare – USA vs USSR (Multiplayer)</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: Arial, sans-serif;
+    }
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: Arial, sans-serif;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 14px;
+      border: 1px solid #444;
+      z-index: 10;
+      pointer-events: none;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
 </head>
 <body>
 
-    <div id="status">Waiting for Faction Selection...</div>
+<div id="status">Connecting to server...</div>
 
-    <div id="ui">
-        <h2>WWI NAVAL COMBAT (P2P MULTIPLAYER)</h2>
-        <p>Choose your side to initialize connection:</p>
-        <button id="hostBtn">Host Match (US Navy)</button>
-        <br><br>
-        <input type="text" id="joinId" placeholder="Enter Friend's Match ID">
-        <br>
-        <button id="joinBtn">Join Match (Imperial Russian Navy)</button>
-    </div>
+<script>
+// ======================================================
+// ===============  OCEAN SYSTEM ========================
+// ======================================================
+function createOcean() {
+  const geo = new THREE.PlaneGeometry(2000, 2000, 128, 128);
+  const mat = new THREE.MeshPhongMaterial({
+    color: 0x1e90ff,
+    shininess: 20,
+    flatShading: true
+  });
+  const ocean = new THREE.Mesh(geo, mat);
+  ocean.rotation.x = -Math.PI / 2;
+  return ocean;
+}
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+// ======================================================
+// ===============  SHIP CLASS ==========================
+// ======================================================
+class Ship {
+  constructor(color = 0x333333) {
+    this.mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(4, 1, 12),
+      new THREE.MeshStandardMaterial({ color: color })
+    );
+    this.mesh.position.y = 1;
 
-    <script>
-        const ui = document.getElementById('ui');
-        const statusText = document.getElementById('status');
-        let peer, conn;
-        let myFaction = '';
-        let gameStarted = false;
+    this.speed = 0;
+    this.turnSpeed = 0.02;
 
-        // --- 3D ENGINE SETUP ---
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x607d8b); // Overcast WWI sky
+    this.keys = {};
+    window.addEventListener('keydown', e => this.keys[e.code] = true);
+    window.addEventListener('keyup', e => this.keys[e.code] = false);
+  }
 
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+  update() {
+    if (this.keys['KeyW']) this.speed = 0.2;
+    else if (this.keys['KeyS']) this.speed = -0.1;
+    else this.speed *= 0.95; // Water drag friction
 
-        // Lighting
-        const light = new THREE.DirectionalLight(0xffffff, 0.8);
-        light.position.set(50, 100, 50);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x404040, 1.2));
+    if (this.keys['KeyA']) this.mesh.rotation.y += this.turnSpeed;
+    if (this.keys['KeyD']) this.mesh.rotation.y -= this.turnSpeed;
 
-        // The Ocean
-        const oceanGeo = new THREE.PlaneGeometry(2000, 2000);
-        const oceanMat = new THREE.MeshPhongMaterial({ color: 0x1a2e3b, roughness: 0.8 });
-        const ocean = new THREE.Mesh(oceanGeo, oceanMat);
-        ocean.rotation.x = -Math.PI / 2;
-        scene.add(ocean);
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.mesh.quaternion);
+    this.mesh.position.add(forward.multiplyScalar(this.speed));
+  }
+}
 
-        // Ship Generation Meshes
-        function createWarship(faction) {
-            const shipGroup = new THREE.Group();
-            if (faction === 'USA') {
-                // US Standard Dreadnought: Wide, Haze Gray, boxy bridge structures
-                const hull = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 9), new THREE.MeshPhongMaterial({ color: 0x708090 }));
-                const deck = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.8, 4), new THREE.MeshPhongMaterial({ color: 0x506070 }));
-                deck.position.set(0, 0.5, 0);
-                shipGroup.add(hull, deck);
-            } else {
-                // Imperial Russian Gangut-class: Sleek, Low Profile, Dark Baltic Gray
-                const hull = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 10.5), new THREE.MeshPhongMaterial({ color: 0x3a3d40 }));
-                const deck = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.4, 5), new THREE.MeshPhongMaterial({ color: 0x252729 }));
-                deck.position.set(0, 0.4, -0.5);
-                shipGroup.add(hull, deck);
-            }
-            return shipGroup;
+// ======================================================
+// ===============  SCENE SETUP =========================
+// ======================================================
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Lighting
+scene.add(new THREE.DirectionalLight(0xffffff, 0.8));
+scene.add(new THREE.AmbientLight(0x888888));
+
+// Ocean
+const ocean = createOcean();
+scene.add(ocean);
+
+// Local Player Ship (Blue - USA)
+const player = new Ship(0x4444ff);
+scene.add(player.mesh);
+
+camera.position.set(0, 8, -18);
+
+// ======================================================
+// ===============  PROJECTILES =========================
+// ======================================================
+const bullets = [];
+
+window.addEventListener('click', () => {
+  const b = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2),
+    new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+  );
+
+  // Position bullet at front deck of the ship
+  b.position.copy(player.mesh.position)
+    .add(new THREE.Vector3(0, 1, 6).applyQuaternion(player.mesh.quaternion));
+
+  // Forward velocity vector mapping
+  b.userData.vel = new THREE.Vector3(0, 0, 1)
+    .applyQuaternion(player.mesh.quaternion)
+    .multiplyScalar(1.2);
+
+  scene.add(b);
+  bullets.push(b);
+});
+
+// ======================================================
+// ===============  MULTIPLAYER CLIENT ==================
+// ======================================================
+const statusElement = document.getElementById("status");
+let socket;
+let players = {}; // Fleet tracking container for remote players
+
+function connect() {
+  // Points to your local or deployed WebSocket server
+  socket = new WebSocket("ws://localhost:8080");
+
+  socket.onopen = () => {
+    statusElement.textContent = "Connected to Server | Team: USA";
+    statusElement.style.color = "#4caf50";
+  };
+
+  socket.onmessage = msg => {
+    const data = JSON.parse(msg.data);
+
+    if (data.type === "state") {
+      for (let id in data.players) {
+        // If a new player has joined, spawn them into the scene (Red - USSR)
+        if (!players[id]) {
+          players[id] = new Ship(0xff4444);
+          scene.add(players[id].mesh);
         }
+        
+        // Synchronize remote player spatial coordinates
+        players[id].mesh.position.set(
+          data.players[id].x,
+          1,
+          data.players[id].z
+        );
+        players[id].mesh.rotation.y = data.players[id].rot;
+      }
 
-        let myShip, enemyShip;
-
-        // --- NETWORK & LOBBY LOGIC ---
-
-        // Player 1: Host (USA)
-        document.getElementById('hostBtn').addEventListener('click', () => {
-            myFaction = 'USA';
-            peer = new Peer();
-            
-            statusText.innerText = "Generating Match ID...";
-            
-            peer.on('open', (id) => {
-                ui.innerHTML = `<h3>Match Created!</h3>
-                                <p>Send this Match ID to your opponent:</p>
-                                <b style="font-size:20px; color:#ffeb3b;">${id}</b>
-                                <p>Waiting for Russian Fleet to connect...</p>`;
-                statusText.innerText = "Faction: United States Navy";
-                
-                // Initialize local ship position
-                myShip = createWarship('USA');
-                myShip.position.set(-20, 0.75, 0);
-                scene.add(myShip);
-            });
-
-            peer.on('connection', (connection) => {
-                conn = connection;
-                setupNetworkTransmissions();
-            });
-        });
-
-        // Player 2: Join (Russian Empire)
-        document.getElementById('joinBtn').addEventListener('click', () => {
-            const targetId = document.getElementById('joinId').value.trim();
-            if (!targetId) return alert("Please enter a valid Match ID");
-
-            myFaction = 'RUS';
-            peer = new Peer();
-
-            peer.on('open', () => {
-                statusText.innerText = "Connecting to US Fleet...";
-                conn = peer.connect(targetId);
-                setupNetworkTransmissions();
-            });
-        });
-
-        function setupNetworkTransmissions() {
-            conn.on('open', () => {
-                ui.style.display = 'none';
-                gameStarted = true;
-                
-                if (myFaction === 'RUS') {
-                    statusText.innerText = "Faction: Imperial Russian Navy";
-                    myShip = createWarship('RUS');
-                    myShip.position.set(20, 0.6, 0);
-                    myShip.rotation.y = Math.PI; // Face the US ship
-                    scene.add(myShip);
-
-                    enemyShip = createWarship('USA');
-                    scene.add(enemyShip);
-                } else {
-                    statusText.innerText = "Combat Active: Russian Fleet Detected!";
-                    enemyShip = createWarship('RUS');
-                    scene.add(enemyShip);
-                }
-            });
-
-            // Receive enemy movement updates directly from their browser
-            conn.on('data', (data) => {
-                if (enemyShip) {
-                    enemyShip.position.x = data.x;
-                    enemyShip.position.z = data.z;
-                    enemyShip.rotation.y = data.rotation;
-                }
-            });
+      // Handle disconnected players by cleaning them from the scene grid
+      for (let id in players) {
+        if (!data.players[id]) {
+          scene.remove(players[id].mesh);
+          delete players[id];
         }
+      }
+    }
+  };
 
-        // --- GAMEPLAY INPUTS & PHYSICS ---
-        const keys = {};
-        window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
-        window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+  socket.onclose = () => {
+    statusElement.textContent = "Disconnected – retrying connection…";
+    statusElement.style.color = "#f44336";
+    setTimeout(connect, 2000);
+  };
+}
 
-        let speed = 0;
-        const maxSpeed = 0.12; // Massive WWI battleships accelerate slowly
-        const acceleration = 0.002;
-        const friction = 0.985;
-        const turnSpeed = 0.012;
+connect();
 
-        // --- MAIN RENDER AND SYNC LOOP ---
-        function animate() {
-            requestAnimationFrame(animate);
+// Send local engine metrics 20 times per second to syncing socket
+setInterval(() => {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      x: player.mesh.position.x,
+      z: player.mesh.position.z,
+      rot: player.mesh.rotation.y
+    }));
+  }
+}, 50);
 
-            if (gameStarted && myShip) {
-                // Throttle inputs
-                if (keys['w']) speed = Math.min(speed + acceleration, maxSpeed);
-                else if (keys['s']) speed = Math.max(speed - acceleration, -maxSpeed / 2);
-                else speed *= friction;
+// ======================================================
+// ===============  GAME LOOP ===========================
+// ======================================================
+function animate() {
+  requestAnimationFrame(animate);
 
-                // Rudder turning mechanics
-                if (keys['a']) myShip.rotation.y += turnSpeed;
-                if (keys['d']) myShip.rotation.y -= turnSpeed;
+  // Handle local physics update
+  player.update();
 
-                myShip.translateZ(speed);
+  // Update dynamic bullet vector trajectories
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.position.add(b.userData.vel);
 
-                // Send layout matrix details to remote peer
-                conn.send({
-                    x: myShip.position.x,
-                    z: myShip.position.z,
-                    rotation: myShip.rotation.y
-                });
+    // Range threshold bounds collection
+    if (b.position.distanceTo(player.mesh.position) > 500) {
+      scene.remove(b);
+      bullets.splice(i, 1);
+    }
+  }
 
-                // Smooth Third-Person Chase Camera Tracking
-                const relativeCamOffset = new THREE.Vector3(0, 6, -18);
-                const camOffset = relativeCamOffset.applyMatrix4(myShip.matrixWorld);
-                camera.position.lerp(camOffset, 0.08);
-                camera.lookAt(myShip.position.x, myShip.position.y + 1, myShip.position.z);
-            } else {
-                // Idle cinematic pan before connecting
-                const time = Date.now() * 0.0003;
-                camera.position.x = Math.sin(time) * 40;
-                camera.position.z = Math.cos(time) * 40;
-                camera.position.y = 15;
-                camera.lookAt(0, 0, 0);
-            }
+  // Camera third-person smooth tracking (chase camera)
+  const camTarget = player.mesh.position.clone()
+    .add(new THREE.Vector3(0, 6, -14).applyQuaternion(player.mesh.quaternion));
 
-            renderer.render(scene, camera);
-        }
+  camera.position.lerp(camTarget, 0.12);
+  camera.lookAt(player.mesh.position);
 
-        // Responsive window scaling
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+  renderer.render(scene, camera);
+}
 
-        animate();
-    </script>
+// Responsive window resizing adjustment
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+
 </body>
 </html>
